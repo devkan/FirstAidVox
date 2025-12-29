@@ -28,9 +28,16 @@ export function VoiceInterface({
 
   const handleStartVoice = async () => {
     try {
+      // Check if ElevenLabs API key is available
+      if (!apiKey && !import.meta.env.VITE_ELEVENLABS_API_KEY) {
+        throw new Error('Voice service is not configured. ElevenLabs API key is required.');
+      }
+      
       await voiceAgent.activate();
     } catch (error) {
       console.error('Failed to start voice:', error);
+      // Show user-friendly error message
+      alert('Voice service is currently unavailable. Please use the text input below to communicate with the AI assistant.');
     }
   };
 

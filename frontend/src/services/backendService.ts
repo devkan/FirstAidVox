@@ -1,9 +1,9 @@
-import { HospitalLocation, Coordinates } from '../types';
+import type { HospitalLocation, Coordinates } from '../types/index';
 import { errorHandler, ErrorType, ErrorSeverity } from './errorHandler';
 import { offlineFallbackService } from './offlineFallback';
 
 // API Configuration
-const API_BASE_URL = process.env.VITE_API_BASE_URL || 'http://localhost:3001';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 const DEFAULT_TIMEOUT = 15000; // 15 seconds as specified in design
 const MAX_RETRIES = 3;
 
@@ -16,11 +16,15 @@ export interface AgentRequest {
 }
 
 export interface AgentResponse {
-  response: string; // AI agent response text for TTS
+  response?: string; // AI agent response text for TTS
+  advice?: string; // Alternative field name for response
   hospital_data?: HospitalLocation[]; // Hospital data if location services needed
+  hospitals?: HospitalLocation[]; // Alternative field name for hospital data
   condition?: string; // Medical condition assessment
   urgencyLevel?: 'low' | 'moderate' | 'high'; // Urgency classification
+  confidence_level?: 'low' | 'moderate' | 'high'; // Alternative field name for urgency
   confidence?: number; // Assessment confidence level
+  timestamp?: string; // Response timestamp
 }
 
 export interface ApiError extends Error {
@@ -47,7 +51,7 @@ async function withRetry<T>(
   let lastError: Error;
   
   // Use shorter delays in test environment
-  const isTestEnvironment = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true';
+  const isTestEnvironment = import.meta.env.MODE === 'test' || import.meta.env.VITEST === 'true';
   const actualBaseDelay = isTestEnvironment ? 10 : baseDelay; // Much shorter delay for tests
   const actualMaxRetries = isTestEnvironment ? 1 : maxRetries; // Fewer retries for tests
   
@@ -150,6 +154,8 @@ export class BackendService {
     location?: Coordinates, 
     imageFile?: Blob
   ): Promise<AgentResponse> {
+    console.log('🚀 BackendService.sendMessageToAgent called with:', { transcript, location, hasImage: !!imageFile });
+    
     if (!transcript.trim()) {
       const error = createApiError('Transcript cannot be empty', 400, false);
       errorHandler.handleError(error, {
@@ -230,6 +236,7 @@ export class BackendService {
     }
 
     try {
+      console.log('📡 Sending request to backend:', `${API_BASE_URL}/chat`);
       return await withRetry(
         () => httpRequest<AgentResponse>('/chat', {
           method: 'POST',

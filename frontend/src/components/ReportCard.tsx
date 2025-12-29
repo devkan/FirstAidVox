@@ -1,5 +1,5 @@
 import React from 'react';
-import { MedicalResponse } from '../types';
+import type { MedicalResponse } from '../types/index';
 
 export interface ReportCardProps {
   condition: string;
@@ -41,6 +41,8 @@ export function ReportCard({
   className = ''
 }: ReportCardProps) {
   
+  console.log('📋 ReportCard render with props:', { condition, urgencyLevel, adviceSummary, confidence });
+  
   // Format confidence as percentage
   const confidencePercentage = Math.round(confidence * 100);
   
@@ -50,7 +52,10 @@ export function ReportCard({
   const urgencyLabel = urgencyLabels[urgencyLevel];
 
   return (
-    <div className={`bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden ${className}`}>
+    <div className={`bg-red-100 border-4 border-red-500 rounded-lg shadow-lg overflow-hidden ${className}`} style={{minHeight: '200px'}}>
+      <div style={{backgroundColor: 'yellow', padding: '10px', fontSize: '20px', fontWeight: 'bold'}}>
+        🚨 MEDICAL REPORT CARD - TEST VISIBILITY 🚨
+      </div>
       {/* Header with urgency indicator */}
       <div className={`px-6 py-4 border-b border-gray-200 ${urgencyLevel === 'high' ? 'bg-red-50' : urgencyLevel === 'moderate' ? 'bg-yellow-50' : 'bg-green-50'}`}>
         <div className="flex items-center justify-between">
@@ -141,7 +146,10 @@ export interface MedicalReportCardProps {
 }
 
 export function MedicalReportCard({ medicalResponse, className }: MedicalReportCardProps) {
+  console.log('🏥 MedicalReportCard render:', { medicalResponse });
+  
   if (!medicalResponse) {
+    console.log('📝 No medical response, showing placeholder');
     return (
       <div className={`bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 p-8 text-center ${className}`}>
         <div className="text-gray-400 mb-2">
@@ -156,14 +164,36 @@ export function MedicalReportCard({ medicalResponse, className }: MedicalReportC
     );
   }
 
+  console.log('✅ Rendering medical report with data:', medicalResponse);
+  
   return (
-    <ReportCard
-      condition={medicalResponse.condition}
-      urgencyLevel={medicalResponse.urgencyLevel}
-      adviceSummary={medicalResponse.advice}
-      confidence={medicalResponse.confidence}
-      className={className}
-    />
+    <div style={{ 
+      position: 'relative', 
+      zIndex: 10, 
+      backgroundColor: 'red', 
+      border: '5px solid blue', 
+      padding: '20px',
+      margin: '20px 0',
+      minHeight: '300px'
+    }}>
+      <div style={{ 
+        backgroundColor: 'yellow', 
+        color: 'black', 
+        padding: '10px', 
+        fontSize: '24px', 
+        fontWeight: 'bold',
+        textAlign: 'center'
+      }}>
+        🚨 MEDICAL REPORT VISIBLE - TEST MODE 🚨
+      </div>
+      <ReportCard
+        condition={medicalResponse.condition}
+        urgencyLevel={medicalResponse.urgencyLevel}
+        adviceSummary={medicalResponse.advice}
+        confidence={medicalResponse.confidence}
+        className={className}
+      />
+    </div>
   );
 }
 

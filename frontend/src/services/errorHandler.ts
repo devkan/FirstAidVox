@@ -1,4 +1,4 @@
-import { Notification } from '../types';
+import type { Notification } from '../types/index';
 
 // Error types for categorization
 export enum ErrorType {

@@ -22,7 +22,7 @@ def main():
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
-        port=8000,
+        port=3001,
         log_level=settings.log_level.lower(),
         reload=settings.debug,
         access_log=True

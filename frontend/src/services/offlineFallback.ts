@@ -1,4 +1,4 @@
-import { MedicalResponse, ConversationEntry, HospitalLocation } from '../types';
+import type { MedicalResponse, ConversationEntry, HospitalLocation } from '../types/index';
 import { errorHandler, ErrorType, ErrorSeverity } from './errorHandler';
 
 /**

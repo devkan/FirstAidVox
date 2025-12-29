@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FirstAidVox - AI Emergency Medical Triage</title>
+    <meta name="description" content="AI-powered emergency medical triage system - Voice, image, and location-based medical consultation" />
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="FirstAidVox" />
+    
+    <!-- Open Graph Meta Tags -->
+    <meta property="og:title" content="FirstAidVox - AI Emergency Medical Triage" />
+    <meta property="og:description" content="Voice, image, and location-based AI medical consultation service" />
+    <meta property="og:type" content="website" />
+    
+    <!-- Preload critical resources -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    
+    <!-- Emergency contact styles for critical situations -->
+    <style>
+      /* Critical loading styles */
+      .loading-screen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: #f9fafb;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      }
+      
+      .loading-spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #e5e7eb;
+        border-top: 4px solid #2563eb;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      
+      .loading-text {
+        margin-top: 16px;
+        color: #374151;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+      
+      /* Emergency fallback styles */
+      .emergency-fallback {
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        padding: 24px;
+        border-radius: 8px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        text-align: center;
+        max-width: 400px;
+        width: 90%;
+      }
+      
+      .emergency-title {
+        color: #dc2626;
+        font-size: 18px;
+        font-weight: bold;
+        margin-bottom: 12px;
+      }
+      
+      .emergency-contacts {
+        text-align: left;
+        margin: 16px 0;
+      }
+      
+      .emergency-contact {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      
+      .emergency-number {
+        font-weight: bold;
+        color: #dc2626;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Loading FirstAidVox...</div>
+    </div>
+    
+    <!-- Emergency Fallback (shown if app fails to load) -->
+    <div id="emergency-fallback" class="emergency-fallback">
+      <div class="emergency-title">⚠️ Emergency Contacts</div>
+      <p>App failed to load. In case of emergency, please call:</p>
+      <div class="emergency-contacts">
+        <div class="emergency-contact">
+          <span>Emergency Services</span>
+          <span class="emergency-number">911</span>
+        </div>
+        <div class="emergency-contact">
+          <span>Poison Control</span>
+          <span class="emergency-number">1-800-222-1222</span>
+        </div>
+        <div class="emergency-contact">
+          <span>Crisis Text Line</span>
+          <span class="emergency-number">Text HOME to 741741</span>
+        </div>
+      </div>
+      <button onclick="location.reload()" style="
+        background: #2563eb;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 6px;
+        cursor: pointer;
+        margin-top: 16px;
+      ">Try Again</button>
+    </div>
+    
+    <!-- Main App Container -->
+    <div id="root"></div>
+    
+    <!-- App Loading Script -->
+    <script type="module" src="/src/main.tsx"></script>
+    
+    <!-- Emergency Fallback Script -->
+    <script>
+      // Show emergency fallback if app doesn't load within 10 seconds
+      setTimeout(() => {
+        const loadingScreen = document.getElementById('loading-screen');
+        const emergencyFallback = document.getElementById('emergency-fallback');
+        const root = document.getElementById('root');
+        
+        // Check if React app has loaded
+        if (!root.hasChildNodes()) {
+          loadingScreen.style.display = 'none';
+          emergencyFallback.style.display = 'block';
+        }
+      }, 10000);
+      
+      // Hide loading screen when React app loads
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          const loadingScreen = document.getElementById('loading-screen');
+          const root = document.getElementById('root');
+          
+          if (root.hasChildNodes()) {
+            loadingScreen.style.display = 'none';
+          }
+        }, 1000);
+      });
+    </script>
+  </body>
+</html>

@@ -27,32 +27,10 @@ export interface CameraState {
   lastUploadId: string | null;
 }
 
-export interface MapState {
-  isVisible: boolean;
-  hospitals: HospitalLocation[];
-  userLocation: Coordinates | null;
-  selectedHospital: string | null;
-}
-
-export interface MedicalState {
-  currentAssessment: MedicalResponse | null;
-  conversationHistory: ConversationEntry[];
-  isProcessing: boolean;
-}
-
-export interface UIState {
-  activePanel: 'voice' | 'camera' | 'map' | 'report';
-  showBottomSheet: boolean;
-  notifications: Notification[];
-  theme: 'light' | 'dark';
-}
-
-export interface AppState {
-  voice: VoiceState;
-  camera: CameraState;
-  map: MapState;
-  medical: MedicalState;
-  ui: UIState;
+export interface EmergencyService {
+  type: 'emergency_room' | 'urgent_care' | 'trauma_center';
+  waitTime: number;
+  availability: 'available' | 'busy' | 'full';
 }
 
 export interface HospitalLocation {
@@ -67,10 +45,11 @@ export interface HospitalLocation {
   isOpen24Hours: boolean;
 }
 
-export interface EmergencyService {
-  type: 'emergency_room' | 'urgent_care' | 'trauma_center';
-  waitTime: number;
-  availability: 'available' | 'busy' | 'full';
+export interface MapState {
+  isVisible: boolean;
+  hospitals: HospitalLocation[];
+  userLocation: Coordinates | null;
+  selectedHospital: string | null;
 }
 
 export interface MedicalResponse {
@@ -80,15 +59,6 @@ export interface MedicalResponse {
   confidence: number;
   hospitalData?: HospitalLocation[];
   requiresEmergencyServices: boolean;
-}
-
-// New unified agent response type for single chat endpoint
-export interface AgentResponse {
-  response: string; // AI agent response text for TTS
-  hospital_data?: HospitalLocation[]; // Hospital data if location services needed
-  condition?: string; // Medical condition assessment
-  urgencyLevel?: 'low' | 'moderate' | 'high'; // Urgency classification
-  confidence?: number; // Assessment confidence level
 }
 
 export interface ConversationEntry {
@@ -103,11 +73,10 @@ export interface ConversationEntry {
   };
 }
 
-export interface UploadResponse {
-  id: string;
-  url: string;
-  status: 'success' | 'error';
-  message?: string;
+export interface MedicalState {
+  currentAssessment: MedicalResponse | null;
+  conversationHistory: ConversationEntry[];
+  isProcessing: boolean;
 }
 
 export interface Notification {
@@ -118,3 +87,53 @@ export interface Notification {
   timestamp: Date;
   autoClose?: boolean;
 }
+
+export interface UIState {
+  activePanel: 'voice' | 'camera' | 'map' | 'report';
+  showBottomSheet: boolean;
+  notifications: Notification[];
+  theme: 'light' | 'dark';
+}
+
+// Main application state interface - EXPLICITLY EXPORTED
+export interface AppState {
+  voice: VoiceState;
+  camera: CameraState;
+  map: MapState;
+  medical: MedicalState;
+  ui: UIState;
+}
+
+// New unified agent response type for single chat endpoint
+export interface AgentResponse {
+  response: string; // AI agent response text for TTS
+  hospital_data?: HospitalLocation[]; // Hospital data if location services needed
+  condition?: string; // Medical condition assessment
+  urgencyLevel?: 'low' | 'moderate' | 'high'; // Urgency classification
+  confidence?: number; // Assessment confidence level
+}
+
+export interface UploadResponse {
+  id: string;
+  url: string;
+  status: 'success' | 'error';
+  message?: string;
+}
+
+// Explicit export list to ensure all types are properly exported
+export {
+  type Coordinates,
+  type VoiceState,
+  type CameraState,
+  type MapState,
+  type MedicalState,
+  type UIState,
+  type AppState,
+  type HospitalLocation,
+  type EmergencyService,
+  type MedicalResponse,
+  type ConversationEntry,
+  type Notification,
+  type AgentResponse,
+  type UploadResponse
+};

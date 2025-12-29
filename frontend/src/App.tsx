@@ -130,16 +130,16 @@ function ConnectionStatus() {
     `}>
       <div className="flex items-center justify-between">
         <div className="flex items-center">
-          <div className={`
-            w-2 h-2 rounded-full mr-2
-            ${connectionStatus.isOnline ? 'bg-yellow-500' : 'bg-red-500'}
-          `} />
-          <span className={`
-            text-sm font-medium
-            ${connectionStatus.isOnline ? 'text-yellow-800' : 'text-red-800'}
-          `}>
-            {connectionStatus.isOnline ? 'Poor Connection' : 'Offline Mode'}
-          </span>
+        <div className={`
+          w-2 h-2 rounded-full mr-2
+          ${connectionStatus.isOnline ? 'bg-yellow-500' : 'bg-red-500'}
+        `} />
+        <span className={`
+          text-sm font-medium
+          ${connectionStatus.isOnline ? 'text-yellow-800' : 'text-red-800'}
+        `}>
+          {connectionStatus.isOnline ? 'Poor Connection' : 'Offline Mode'}
+        </span>
         </div>
         <button
           onClick={() => setShowDetails(!showDetails)}
@@ -173,47 +173,48 @@ function AppContent() {
   useEffect(() => {
     // Set up notification handler
     errorHandler.setNotificationHandler((notification) => {
-      uiState.addNotification(notification)
-    })
+      uiState.addNotification(notification);
+    });
 
     // Set up connection monitoring callbacks
-    connectionMonitor.startMonitoring()
+    connectionMonitor.startMonitoring();
 
     // Set up offline queue processing when connection is restored
     const handleReconnect = () => {
-      console.log('Connection restored, processing offline queue')
-      offlineFallbackService.processOfflineQueue()
-    }
+      console.log('Connection restored, processing offline queue');
+      offlineFallbackService.processOfflineQueue();
+    };
 
     // This would be properly implemented with event listeners in connectionMonitor
     const interval = setInterval(() => {
-      const status = connectionMonitor.getStatus()
+      const status = connectionMonitor.getStatus();
       if (status.isOnline) {
-        handleReconnect()
+        handleReconnect();
       }
-    }, 30000) // Check every 30 seconds
+    }, 30000); // Check every 30 seconds
 
     return () => {
-      clearInterval(interval)
-      connectionMonitor.stopMonitoring()
-    }
-  }, [uiState])
+      clearInterval(interval);
+      connectionMonitor.stopMonitoring();
+    };
+  }, []); // Empty dependency array is correct here
 
   // Auto-dismiss notifications
   useEffect(() => {
     const timer = setInterval(() => {
-      uiState.notifications.forEach(notification => {
+      const currentNotifications = uiState.notifications;
+      currentNotifications.forEach(notification => {
         if (notification.autoClose) {
-          const age = Date.now() - notification.timestamp.getTime()
+          const age = Date.now() - notification.timestamp.getTime();
           if (age > 5000) { // Auto-dismiss after 5 seconds
-            uiState.removeNotification(notification.id)
+            uiState.removeNotification(notification.id);
           }
         }
-      })
-    }, 1000)
+      });
+    }, 1000);
 
-    return () => clearInterval(timer)
-  }, [uiState.notifications, uiState])
+    return () => clearInterval(timer);
+  }, [uiState.notifications.length]); // Only depend on the length to avoid infinite loops
 
   const handlePhotoCapture = (imageData: Blob) => {
     try {
@@ -264,7 +265,7 @@ function AppContent() {
       
       mapState.show()
     }
-  }, [medicalState.currentAssessment?.hospitalData, mapState])
+  }, [medicalState.currentAssessment?.hospitalData]) // Only depend on the specific data we need
 
   const handleMapDismiss = () => {
     try {

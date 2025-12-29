@@ -18,17 +18,27 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
   const voiceAgentRef = useRef<VoiceAgent | null>(null);
   const queueUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Create stable references to avoid infinite re-renders
+  const stableVoiceState = useRef(voiceState);
+  const stableMedicalState = useRef(medicalState);
+  const stableUIState = useRef(uiState);
+  
+  // Update refs when state changes
+  stableVoiceState.current = voiceState;
+  stableMedicalState.current = medicalState;
+  stableUIState.current = uiState;
+
   // Update queue status periodically
   const updateQueueStatus = useCallback(() => {
     if (voiceAgentRef.current) {
       const queueStatus = voiceAgentRef.current.getQueueStatus();
-      voiceState.updateQueueSize(queueStatus.size);
-      voiceState.setProcessingQueue(queueStatus.isProcessing);
+      stableVoiceState.current.updateQueueSize(queueStatus.size);
+      stableVoiceState.current.setProcessingQueue(queueStatus.isProcessing);
       
       const currentSession = voiceAgentRef.current.getCurrentSession();
-      voiceState.setSession(currentSession?.id || null);
+      stableVoiceState.current.setSession(currentSession?.id || null);
     }
-  }, [voiceState]);
+  }, []);
 
   // Start queue status monitoring
   const startQueueMonitoring = useCallback(() => {
@@ -36,8 +46,17 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
       clearInterval(queueUpdateIntervalRef.current);
     }
     
-    queueUpdateIntervalRef.current = setInterval(updateQueueStatus, 1000);
-  }, [updateQueueStatus]);
+    queueUpdateIntervalRef.current = setInterval(() => {
+      if (voiceAgentRef.current) {
+        const queueStatus = voiceAgentRef.current.getQueueStatus();
+        stableVoiceState.current.updateQueueSize(queueStatus.size);
+        stableVoiceState.current.setProcessingQueue(queueStatus.isProcessing);
+        
+        const currentSession = voiceAgentRef.current.getCurrentSession();
+        stableVoiceState.current.setSession(currentSession?.id || null);
+      }
+    }, 1000);
+  }, []);
 
   // Stop queue status monitoring
   const stopQueueMonitoring = useCallback(() => {
@@ -54,26 +73,26 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
     }
 
     try {
-      voiceState.updateConnectionStatus('connecting');
+      stableVoiceState.current.updateConnectionStatus('connecting');
 
       const agent = createVoiceAgent({
         agentId: options.agentId || defaultVoiceConfig.agentId || 'default-agent-id',
         apiKey: options.apiKey || defaultVoiceConfig.apiKey,
         onConnect: () => {
-          voiceState.updateConnectionStatus('connected');
+          stableVoiceState.current.updateConnectionStatus('connected');
           startQueueMonitoring();
           console.log('Voice agent connected successfully');
         },
         onDisconnect: () => {
-          voiceState.updateConnectionStatus('disconnected');
-          voiceState.deactivate();
+          stableVoiceState.current.updateConnectionStatus('disconnected');
+          stableVoiceState.current.deactivate();
           stopQueueMonitoring();
           console.log('Voice agent disconnected');
         },
         onError: (error: Error) => {
           console.error('Voice agent error:', error);
-          voiceState.updateConnectionStatus('disconnected');
-          uiState.addNotification({
+          stableVoiceState.current.updateConnectionStatus('disconnected');
+          stableUIState.current.addNotification({
             id: `voice-error-${Date.now()}`,
             type: 'error',
             title: 'Voice Service Error',
@@ -85,7 +104,7 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
         onMessage: async (message: string) => {
           try {
             // Add system response to conversation history
-            medicalState.addConversationEntry({
+            stableMedicalState.current.addConversationEntry({
               id: `response-${Date.now()}`,
               timestamp: new Date(),
               type: 'system_response',
@@ -95,40 +114,40 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
               }
             });
 
-            voiceState.stopProcessing();
+            stableVoiceState.current.stopProcessing();
           } catch (error) {
             console.error('Error processing voice response:', error);
-            voiceState.stopProcessing();
+            stableVoiceState.current.stopProcessing();
           }
         },
         onStatusChange: (status) => {
-          voiceState.updateConnectionStatus(status);
+          stableVoiceState.current.updateConnectionStatus(status);
         },
         onModeChange: (mode) => {
           switch (mode) {
             case 'listening':
-              voiceState.startListening();
+              stableVoiceState.current.startListening();
               break;
             case 'speaking':
-              voiceState.stopListening();
+              stableVoiceState.current.stopListening();
               break;
             case 'thinking':
-              voiceState.startProcessing();
+              stableVoiceState.current.startProcessing();
               break;
           }
         },
         onVolumeChange: (volume) => {
-          voiceState.updateAudioLevel(volume);
+          stableVoiceState.current.updateAudioLevel(volume);
         }
       });
 
       // Set up additional callbacks
       agent.setCallbacks({
         onTranscription: async (text: string) => {
-          voiceState.updateTranscription(text);
+          stableVoiceState.current.updateTranscription(text);
           
           // Add user voice input to conversation history
-          medicalState.addConversationEntry({
+          stableMedicalState.current.addConversationEntry({
             id: `voice-${Date.now()}`,
             timestamp: new Date(),
             type: 'user_voice',
@@ -137,8 +156,8 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
 
           // Send transcription to backend agent for processing
           try {
-            voiceState.startProcessing();
-            medicalState.startProcessing();
+            stableVoiceState.current.startProcessing();
+            stableMedicalState.current.startProcessing();
 
             // Get user location if available
             let userLocation;
@@ -171,7 +190,7 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
             
             // Update medical state with response
             if (agentResponse.condition || agentResponse.urgencyLevel) {
-              medicalState.setAssessment({
+              stableMedicalState.current.setAssessment({
                 condition: agentResponse.condition || 'Assessment in progress',
                 urgencyLevel: agentResponse.urgencyLevel || 'low',
                 advice: agentResponse.response,
@@ -191,14 +210,14 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
             // Convert response to speech (this would be handled by ElevenLabs)
             // The agent should handle TTS automatically based on the response
 
-            voiceState.stopProcessing();
-            medicalState.stopProcessing();
+            stableVoiceState.current.stopProcessing();
+            stableMedicalState.current.stopProcessing();
           } catch (error) {
             console.error('Error processing transcription:', error);
-            voiceState.stopProcessing();
-            medicalState.stopProcessing();
+            stableVoiceState.current.stopProcessing();
+            stableMedicalState.current.stopProcessing();
             
-            uiState.addNotification({
+            stableUIState.current.addNotification({
               id: `transcription-error-${Date.now()}`,
               type: 'error',
               title: 'Processing Error',
@@ -213,14 +232,14 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
           console.log('Voice response received:', text);
         },
         onAudioLevel: (level: number) => {
-          voiceState.updateAudioLevel(level);
+          stableVoiceState.current.updateAudioLevel(level);
         },
         onConnectionStatusChange: (status) => {
-          voiceState.updateConnectionStatus(status);
+          stableVoiceState.current.updateConnectionStatus(status);
         },
         onError: (error: Error) => {
           console.error('Voice agent callback error:', error);
-          uiState.addNotification({
+          stableUIState.current.addNotification({
             id: `voice-callback-error-${Date.now()}`,
             type: 'error',
             title: 'Voice Processing Error',
@@ -237,10 +256,10 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
 
     } catch (error) {
       console.error('Failed to initialize voice agent:', error);
-      voiceState.updateConnectionStatus('disconnected');
+      stableVoiceState.current.updateConnectionStatus('disconnected');
       
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      uiState.addNotification({
+      stableUIState.current.addNotification({
         id: `voice-init-error-${Date.now()}`,
         type: 'error',
         title: 'Voice Service Initialization Failed',
@@ -251,23 +270,23 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
       
       throw error;
     }
-  }, [options.agentId, options.apiKey, voiceState, medicalState, uiState]);
+  }, [options.agentId, options.apiKey, options.pendingImage, options.onImageSent]);
 
   // Activate voice agent
   const activate = useCallback(async () => {
     try {
-      voiceState.activate();
+      stableVoiceState.current.activate();
       const agent = await initializeAgent();
       
       if (agent.isReady()) {
         agent.startListening();
-        uiState.setActivePanel('voice');
+        stableUIState.current.setActivePanel('voice');
       }
     } catch (error) {
       console.error('Failed to activate voice agent:', error);
-      voiceState.deactivate();
+      stableVoiceState.current.deactivate();
     }
-  }, [initializeAgent, voiceState, uiState]);
+  }, [initializeAgent]);
 
   // Deactivate voice agent with proper cleanup
   const deactivate = useCallback(async () => {
@@ -279,28 +298,22 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
         await voiceAgentRef.current.disconnect();
         voiceAgentRef.current = null;
       }
-      voiceState.deactivate();
+      stableVoiceState.current.deactivate();
     } catch (error) {
       console.error('Error deactivating voice agent:', error);
-      voiceState.deactivate();
+      stableVoiceState.current.deactivate();
     }
-  }, [voiceState, stopQueueMonitoring]);
+  }, [stopQueueMonitoring]);
 
   // Send text message through voice agent with priority support
   const sendMessage = useCallback(async (text: string, priority: 'low' | 'normal' | 'high' = 'normal') => {
+    console.log('🎤 useVoiceAgent.sendMessage called with:', { text, priority });
+    
     try {
-      if (!voiceAgentRef.current) {
-        await initializeAgent();
-      }
-
-      const agent = voiceAgentRef.current;
-      if (!agent || !agent.isReady()) {
-        throw new Error('Voice agent is not ready');
-      }
-
-      voiceState.startProcessing();
-      medicalState.startProcessing();
+      stableVoiceState.current.startProcessing();
+      stableMedicalState.current.startProcessing();
       
+      console.log('📍 Getting user location...');
       // Get user location if available
       let userLocation;
       try {
@@ -318,12 +331,17 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
         console.log('Location not available:', error);
       }
 
+      console.log('🌍 User location:', userLocation);
+
       // Send message directly to backend with image if available
+      console.log('📤 Calling backendService.sendMessageToAgent...');
       const agentResponse = await backendService.sendMessageToAgent(
         text, 
         userLocation, 
         options.pendingImage || undefined
       );
+      
+      console.log('✅ Backend response received:', agentResponse);
       
       // Clear the pending image after sending
       if (options.pendingImage && options.onImageSent) {
@@ -331,50 +349,66 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
       }
       
       // Update medical state with response
-      if (agentResponse.condition || agentResponse.urgencyLevel) {
-        medicalState.setAssessment({
-          condition: agentResponse.condition || 'Assessment in progress',
-          urgencyLevel: agentResponse.urgencyLevel || 'low',
-          advice: agentResponse.response,
-          confidence: agentResponse.confidence || 0.8,
-          hospitalData: agentResponse.hospital_data,
-          requiresEmergencyServices: agentResponse.urgencyLevel === 'high'
-        });
-      }
+      console.log('🏥 Processing medical response...');
+      
+      // Always set assessment since we have a response
+      stableMedicalState.current.setAssessment({
+        condition: agentResponse.condition || 'Medical consultation',
+        urgencyLevel: agentResponse.urgencyLevel || agentResponse.confidence_level || 'low',
+        advice: agentResponse.response || agentResponse.advice || 'No advice provided',
+        confidence: agentResponse.confidence || 0.8,
+        hospitalData: agentResponse.hospital_data || agentResponse.hospitals,
+        requiresEmergencyServices: (agentResponse.urgencyLevel === 'high') || (agentResponse.confidence_level === 'high')
+      });
+      
+      console.log('✅ Medical assessment set successfully');
 
       // Add conversation entries
-      medicalState.addConversationEntry({
+      stableMedicalState.current.addConversationEntry({
         id: `text-${Date.now()}`,
         timestamp: new Date(),
         type: 'user_voice',
         content: text
       });
 
-      medicalState.addConversationEntry({
+      stableMedicalState.current.addConversationEntry({
         id: `response-${Date.now()}`,
         timestamp: new Date(),
         type: 'system_response',
-        content: agentResponse.response,
+        content: agentResponse.response || agentResponse.advice || 'No response',
         metadata: {
           confidence: agentResponse.confidence || 0.8
         }
       });
       
-      // Also send through voice agent for TTS if available
-      await agent.sendMessage(agentResponse.response, priority);
+      // Try to send through voice agent for TTS if available and ready
+      if (voiceAgentRef.current && voiceAgentRef.current.isReady()) {
+        try {
+          await voiceAgentRef.current.sendMessage(agentResponse.response, priority);
+        } catch (voiceError) {
+          console.log('Voice TTS not available, continuing without voice:', voiceError);
+        }
+      }
       
-      // Update queue status immediately after sending
-      updateQueueStatus();
+      // Update queue status if voice agent is available
+      if (voiceAgentRef.current) {
+        const queueStatus = voiceAgentRef.current.getQueueStatus();
+        stableVoiceState.current.updateQueueSize(queueStatus.size);
+        stableVoiceState.current.setProcessingQueue(queueStatus.isProcessing);
+        
+        const currentSession = voiceAgentRef.current.getCurrentSession();
+        stableVoiceState.current.setSession(currentSession?.id || null);
+      }
       
-      voiceState.stopProcessing();
-      medicalState.stopProcessing();
+      stableVoiceState.current.stopProcessing();
+      stableMedicalState.current.stopProcessing();
     } catch (error) {
       console.error('Failed to send message:', error);
-      voiceState.stopProcessing();
-      medicalState.stopProcessing();
+      stableVoiceState.current.stopProcessing();
+      stableMedicalState.current.stopProcessing();
       
       const errorMessage = error instanceof Error ? error.message : 'Failed to send message';
-      uiState.addNotification({
+      stableUIState.current.addNotification({
         id: `voice-send-error-${Date.now()}`,
         type: 'error',
         title: 'Message Send Failed',
@@ -383,23 +417,33 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
         autoClose: true
       });
     }
-  }, [initializeAgent, voiceState, medicalState, uiState, updateQueueStatus, options.pendingImage, options.onImageSent]);
+  }, [options.pendingImage, options.onImageSent]);
 
   // Clear voice request queue
   const clearQueue = useCallback(() => {
     if (voiceAgentRef.current) {
       voiceAgentRef.current.clearQueue();
-      updateQueueStatus();
+      const queueStatus = voiceAgentRef.current.getQueueStatus();
+      stableVoiceState.current.updateQueueSize(queueStatus.size);
+      stableVoiceState.current.setProcessingQueue(queueStatus.isProcessing);
+      
+      const currentSession = voiceAgentRef.current.getCurrentSession();
+      stableVoiceState.current.setSession(currentSession?.id || null);
     }
-  }, [updateQueueStatus]);
+  }, []);
 
   // Force end current session
   const forceEndSession = useCallback(() => {
     if (voiceAgentRef.current) {
       voiceAgentRef.current.forceEndSession();
-      updateQueueStatus();
+      const queueStatus = voiceAgentRef.current.getQueueStatus();
+      stableVoiceState.current.updateQueueSize(queueStatus.size);
+      stableVoiceState.current.setProcessingQueue(queueStatus.isProcessing);
+      
+      const currentSession = voiceAgentRef.current.getCurrentSession();
+      stableVoiceState.current.setSession(currentSession?.id || null);
     }
-  }, [updateQueueStatus]);
+  }, []);
 
   // Auto-connect on mount if enabled
   useEffect(() => {

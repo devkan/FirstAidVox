@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { APIProvider, Map, Marker, InfoWindow } from '@vis.gl/react-google-maps';
-import { HospitalLocation, Coordinates } from '../types';
+import type { HospitalLocation, Coordinates } from '../types/index';
 
 export interface MapComponentProps {
   hospitalData: HospitalLocation[];

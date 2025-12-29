@@ -1,6 +1,5 @@
 import React, { useReducer, createContext, useContext, ReactNode } from 'react';
-import {
-  AppState,
+import type {
   VoiceState,
   CameraState,
   MapState,
@@ -11,7 +10,16 @@ import {
   ConversationEntry,
   Coordinates,
   Notification
-} from '../types';
+} from '../types/index';
+
+// Define AppState locally if import fails
+interface AppState {
+  voice: VoiceState;
+  camera: CameraState;
+  map: MapState;
+  medical: MedicalState;
+  ui: UIState;
+}
 
 // Action types for each state domain
 export type VoiceAction =

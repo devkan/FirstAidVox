@@ -39,9 +39,20 @@ class Settings(BaseSettings):
     
     # API Configuration
     cors_origins: List[str] = Field(
-        default=["http://localhost:3000", "http://localhost:8080"],
+        default=["http://localhost:3000", "http://localhost:5173", "http://localhost:8080"],
         env="CORS_ORIGINS"
     )
+    
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        """Parse CORS origins from string or list."""
+        if isinstance(v, str):
+            # Handle comma-separated string
+            return [origin.strip() for origin in v.split(',') if origin.strip()]
+        elif isinstance(v, list):
+            return v
+        return ["http://localhost:3000", "http://localhost:8080"]
     max_image_size_mb: int = Field(default=10, env="MAX_IMAGE_SIZE_MB")
     request_timeout_seconds: int = Field(default=30, env="REQUEST_TIMEOUT_SECONDS")
     

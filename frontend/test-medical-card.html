@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Medical Report Card</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root" class="p-8 bg-gray-100 min-h-screen">
+        <h1 class="text-2xl font-bold mb-4">Medical Report Card Test</h1>
+        <div id="test-card"></div>
+    </div>
+
+    <script type="text/babel">
+        // Simple test component to verify ReportCard rendering
+        function TestMedicalCard() {
+            const testData = {
+                condition: "Minor headache",
+                urgencyLevel: "low",
+                advice: "Take rest and drink plenty of water. Consider over-the-counter pain relief if needed.",
+                confidence: 0.85
+            };
+
+            return React.createElement('div', {
+                className: 'bg-red-100 border-4 border-red-500 rounded-lg shadow-lg overflow-hidden',
+                style: { minHeight: '200px' }
+            }, [
+                React.createElement('div', {
+                    key: 'header',
+                    style: { backgroundColor: 'yellow', padding: '10px', fontSize: '20px', fontWeight: 'bold' }
+                }, '🚨 MEDICAL REPORT CARD - TEST VISIBILITY 🚨'),
+                React.createElement('div', {
+                    key: 'content',
+                    className: 'p-6'
+                }, [
+                    React.createElement('h2', { key: 'title', className: 'text-xl font-bold mb-4' }, 'Medical Assessment'),
+                    React.createElement('div', { key: 'condition', className: 'mb-4' }, [
+                        React.createElement('h3', { key: 'condition-title', className: 'font-semibold mb-2' }, 'Condition:'),
+                        React.createElement('p', { key: 'condition-text' }, testData.condition)
+                    ]),
+                    React.createElement('div', { key: 'advice', className: 'mb-4' }, [
+                        React.createElement('h3', { key: 'advice-title', className: 'font-semibold mb-2' }, 'Advice:'),
+                        React.createElement('p', { key: 'advice-text' }, testData.advice)
+                    ]),
+                    React.createElement('div', { key: 'confidence' }, [
+                        React.createElement('span', { key: 'confidence-text' }, `Confidence: ${Math.round(testData.confidence * 100)}%`)
+                    ])
+                ])
+            ]);
+        }
+
+        // Render the test component
+        const root = ReactDOM.createRoot(document.getElementById('test-card'));
+        root.render(React.createElement(TestMedicalCard));
+    </script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</body>
+</html>

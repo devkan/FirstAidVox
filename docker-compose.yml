@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3001:8000"  # 프론트엔드가 3001로 호출하므로 3001로 매핑
+    environment:
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
+      - VERTEX_AI_LOCATION=${VERTEX_AI_LOCATION:-us-central1}
+      - GEMINI_MODEL_NAME=${GEMINI_MODEL_NAME:-gemini-2.0-flash-lite}
+      - SEARCH_ENGINE_ID=${SEARCH_ENGINE_ID}
+      - VERTEX_SEARCH_LOCATION=${VERTEX_SEARCH_LOCATION:-global}
+      - SERVICE_ACCOUNT_KEY_PATH=${SERVICE_ACCOUNT_KEY_PATH:-service-account-key.json}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DEBUG=${DEBUG:-false}
+      - CORS_ORIGINS=["http://localhost:5173", "http://localhost:3000", "http://localhost:8080"]
+      - MAX_IMAGE_SIZE_MB=${MAX_IMAGE_SIZE_MB:-10}
+      - REQUEST_TIMEOUT_SECONDS=${REQUEST_TIMEOUT_SECONDS:-30}
+      - MAX_CONCURRENT_REQUESTS=${MAX_CONCURRENT_REQUESTS:-100}
+      - RESPONSE_TIME_LIMIT_SECONDS=${RESPONSE_TIME_LIMIT_SECONDS:-3}
+    volumes:
+      - ./backend/service-account-key.json:/app/service-account-key.json:ro
+    depends_on:
+      - frontend
+    networks:
+      - firstaidvox-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:3001
+      - VITE_GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
+      - VITE_ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+    networks:
+      - firstaidvox-network
+
+networks:
+  firstaidvox-network:
+    driver: bridge

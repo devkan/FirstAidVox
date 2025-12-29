@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fc from 'fast-check';
 import { BackendService } from '../services/backendService';
-import { AgentResponse } from '../types';
+import type { AgentResponse } from '../types/index';
 
 // Mock fetch globally
 const mockFetch = vi.fn();
