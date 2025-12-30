@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Infinite Loop Fix</title>
+</head>
+<body>
+    <h1>Testing Infinite Loop Fix</h1>
+    <p>Open browser console and navigate to <a href="http://localhost:5173" target="_blank">http://localhost:5173</a></p>
+    <p>Check for:</p>
+    <ul>
+        <li>No "Maximum update depth exceeded" errors</li>
+        <li>No duplicate identifier compilation errors</li>
+        <li>App loads successfully</li>
+    </ul>
+    
+    <script>
+        console.log('Test page loaded. Please check the main app at http://localhost:5173');
+        
+        // Test if we can access the main app
+        fetch('http://localhost:5173')
+            .then(response => {
+                if (response.ok) {
+                    console.log('✅ Main app is accessible');
+                } else {
+                    console.log('❌ Main app returned status:', response.status);
+                }
+            })
+            .catch(error => {
+                console.log('❌ Error accessing main app:', error);
+            });
+    </script>
+</body>
+</html>

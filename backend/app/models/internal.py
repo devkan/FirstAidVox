@@ -37,6 +37,14 @@ class AIResponse(BaseModel):
         ...,
         description="Generated text response from the AI model"
     )
+    brief_text: str = Field(
+        default="",
+        description="Brief summary response for quick display"
+    )
+    detailed_text: str = Field(
+        default="",
+        description="Detailed advice and recommendations"
+    )
     function_calls: List[FunctionCall] = Field(
         default_factory=list,
         description="List of function calls requested by the AI model"

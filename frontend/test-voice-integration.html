@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Integration Test - FirstAidVox</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #4a5568;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .status-card {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 10px 0;
+        }
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        .status-ok { background-color: #48bb78; }
+        .status-error { background-color: #f56565; }
+        .status-warning { background-color: #ed8936; }
+        .test-section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+            transition: all 0.2s;
+        }
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        button:disabled {
+            background: #a0aec0;
+            cursor: not-allowed;
+            transform: none;
+        }
+        button.danger {
+            background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%);
+        }
+        button.success {
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+        }
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 14px;
+            resize: vertical;
+            min-height: 80px;
+            box-sizing: border-box;
+        }
+        .log-container {
+            background: #1a202c;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+        .log-entry {
+            margin: 2px 0;
+            padding: 2px 0;
+        }
+        .log-info { color: #63b3ed; }
+        .log-success { color: #68d391; }
+        .log-error { color: #fc8181; }
+        .log-warning { color: #f6ad55; }
+        .response-box {
+            background: #f0fff4;
+            border: 1px solid #9ae6b4;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 15px 0;
+            white-space: pre-wrap;
+            font-family: system-ui, sans-serif;
+        }
+        .audio-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .volume-slider {
+            flex: 1;
+            max-width: 200px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 Voice Integration Test</h1>
+        
+        <!-- System Status -->
+        <div class="status-card">
+            <h3>System Status</h3>
+            <div class="status-item">
+                <span>Backend API</span>
+                <span><span class="status-indicator" id="backend-status"></span><span id="backend-text">Checking...</span></span>
+            </div>
+            <div class="status-item">
+                <span>Speech Synthesis</span>
+                <span><span class="status-indicator" id="tts-status"></span><span id="tts-text">Checking...</span></span>
+            </div>
+            <div class="status-item">
+                <span>Speech Recognition</span>
+                <span><span class="status-indicator" id="stt-status"></span><span id="stt-text">Checking...</span></span>
+            </div>
+            <div class="status-item">
+                <span>ElevenLabs Config</span>
+                <span><span class="status-indicator" id="elevenlabs-status"></span><span id="elevenlabs-text">Checking...</span></span>
+            </div>
+        </div>
+
+        <!-- Voice Controls -->
+        <div class="test-section">
+            <h3>🎙️ Voice Controls</h3>
+            <div class="audio-controls">
+                <button id="start-listening" class="success">Start Listening</button>
+                <button id="stop-listening" disabled>Stop Listening</button>
+                <span>Volume: </span>
+                <input type="range" id="volume-slider" class="volume-slider" min="0" max="1" step="0.1" value="0.8">
+                <span id="volume-display">80%</span>
+            </div>
+            <div style="margin: 10px 0;">
+                <label for="language-select">Speech Recognition Language:</label>
+                <select id="language-select" style="margin-left: 10px; padding: 5px;">
+                    <option value="auto">Auto-detect from browser</option>
+                    <option value="en-US">English (US)</option>
+                    <option value="ko-KR">한국어 (Korean)</option>
+                    <option value="ja-JP">日本語 (Japanese)</option>
+                    <option value="es-ES">Español (Spanish)</option>
+                </select>
+            </div>
+            <div id="listening-status" style="margin-top: 10px; font-style: italic; color: #666;"></div>
+        </div>
+
+        <!-- Message Testing -->
+        <div class="test-section">
+            <h3>💬 Message Testing</h3>
+            <textarea id="message-input" placeholder="Enter your medical question or describe symptoms... (English, 한국어, 日本語, Español supported)">머리가 아프고 어지러워요. 어떻게 해야 하나요?</textarea>
+            <div style="margin: 15px 0;">
+                <button id="send-text">Send as Text</button>
+                <button id="send-voice" class="success">Send + Speak Response</button>
+                <button id="test-tts-only">Test TTS Only</button>
+            </div>
+            
+            <h4>Quick Test Messages:</h4>
+            <div>
+                <button onclick="setMessage('I have a headache and feel nauseous')">💊 Headache + Nausea (EN)</button>
+                <button onclick="setMessage('머리가 아프고 메스꺼워요')">💊 두통 + 메스꺼움 (KO)</button>
+                <button onclick="setMessage('I cut my finger and it won\\'t stop bleeding')">🩹 Bleeding Cut (EN)</button>
+                <button onclick="setMessage('손가락을 베었는데 피가 멈추지 않아요')">🩹 베인 상처 (KO)</button>
+                <button onclick="setMessage('I think I sprained my ankle while running')">🦵 Sprained Ankle (EN)</button>
+                <button onclick="setMessage('발목을 삐었는 것 같아요')">🦵 발목 삠 (KO)</button>
+                <button onclick="setMessage('I have chest pain and shortness of breath')" class="danger">❤️ Chest Pain (EN)</button>
+                <button onclick="setMessage('가슴이 아프고 숨이 가빠요')" class="danger">❤️ 가슴 통증 (KO)</button>
+            </div>
+        </div>
+
+        <!-- Response Display -->
+        <div class="test-section">
+            <h3>📋 Response</h3>
+            <div id="response-container">
+                <p style="color: #666; font-style: italic;">No response yet. Send a message to see the AI response.</p>
+            </div>
+        </div>
+
+        <!-- Logs -->
+        <div class="test-section">
+            <h3>📊 Activity Log</h3>
+            <div class="log-container" id="log-container"></div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE_URL = 'http://localhost:3001';
+        const ELEVENLABS_API_KEY = '049742741a692fdcc502d39c5158597e7567defae6e8b27ac75111359ac1e06e';
+        const ELEVENLABS_AGENT_ID = 'agent_9701kdpc86yjeta9wawmj2svw818';
+
+        // State
+        let isListening = false;
+        let recognition = null;
+        let currentUtterance = null;
+
+        // DOM Elements
+        const elements = {
+            backendStatus: document.getElementById('backend-status'),
+            backendText: document.getElementById('backend-text'),
+            ttsStatus: document.getElementById('tts-status'),
+            ttsText: document.getElementById('tts-text'),
+            sttStatus: document.getElementById('stt-status'),
+            sttText: document.getElementById('stt-text'),
+            elevenLabsStatus: document.getElementById('elevenlabs-status'),
+            elevenLabsText: document.getElementById('elevenlabs-text'),
+            startListening: document.getElementById('start-listening'),
+            stopListening: document.getElementById('stop-listening'),
+            volumeSlider: document.getElementById('volume-slider'),
+            volumeDisplay: document.getElementById('volume-display'),
+            listeningStatus: document.getElementById('listening-status'),
+            messageInput: document.getElementById('message-input'),
+            sendText: document.getElementById('send-text'),
+            sendVoice: document.getElementById('send-voice'),
+            testTtsOnly: document.getElementById('test-tts-only'),
+            responseContainer: document.getElementById('response-container'),
+            logContainer: document.getElementById('log-container')
+        };
+
+        // Logging
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${type}`;
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            elements.logContainer.appendChild(logEntry);
+            elements.logContainer.scrollTop = elements.logContainer.scrollHeight;
+            
+            // Keep only last 100 entries
+            while (elements.logContainer.children.length > 100) {
+                elements.logContainer.removeChild(elements.logContainer.firstChild);
+            }
+            
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        // Status Updates
+        function updateStatus(element, textElement, status, message) {
+            element.className = `status-indicator status-${status}`;
+            textElement.textContent = message;
+        }
+
+        // System Checks
+        async function checkBackend() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/health`);
+                if (response.ok) {
+                    updateStatus(elements.backendStatus, elements.backendText, 'ok', 'Online');
+                    log('✅ Backend is online and responding', 'success');
+                    return true;
+                } else {
+                    updateStatus(elements.backendStatus, elements.backendText, 'error', 'Error');
+                    log(`❌ Backend returned error: ${response.status}`, 'error');
+                    return false;
+                }
+            } catch (error) {
+                updateStatus(elements.backendStatus, elements.backendText, 'error', 'Offline');
+                log(`❌ Backend is offline: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        function checkTTS() {
+            if ('speechSynthesis' in window) {
+                updateStatus(elements.ttsStatus, elements.ttsText, 'ok', 'Supported');
+                log('✅ Speech Synthesis API is supported', 'success');
+                
+                // Load voices
+                const loadVoices = () => {
+                    const voices = speechSynthesis.getVoices();
+                    if (voices.length > 0) {
+                        log(`✅ Found ${voices.length} available voices`, 'success');
+                        const englishVoices = voices.filter(v => v.lang.startsWith('en'));
+                        log(`📢 English voices: ${englishVoices.length}`, 'info');
+                    }
+                };
+                
+                if (speechSynthesis.getVoices().length > 0) {
+                    loadVoices();
+                } else {
+                    speechSynthesis.onvoiceschanged = loadVoices;
+                }
+                
+                return true;
+            } else {
+                updateStatus(elements.ttsStatus, elements.ttsText, 'error', 'Not Supported');
+                log('❌ Speech Synthesis API is not supported', 'error');
+                return false;
+            }
+        }
+
+        function checkSTT() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (SpeechRecognition) {
+                updateStatus(elements.sttStatus, elements.sttText, 'ok', 'Supported');
+                log('✅ Speech Recognition API is supported', 'success');
+                return true;
+            } else {
+                updateStatus(elements.sttStatus, elements.sttText, 'error', 'Not Supported');
+                log('❌ Speech Recognition API is not supported', 'error');
+                return false;
+            }
+        }
+
+        function checkElevenLabs() {
+            if (ELEVENLABS_API_KEY && ELEVENLABS_API_KEY !== 'your-api-key-here' && 
+                ELEVENLABS_AGENT_ID && ELEVENLABS_AGENT_ID !== 'your-agent-id-here') {
+                updateStatus(elements.elevenLabsStatus, elements.elevenLabsText, 'ok', 'Configured');
+                log('✅ ElevenLabs credentials are configured', 'success');
+                return true;
+            } else {
+                updateStatus(elements.elevenLabsStatus, elements.elevenLabsText, 'warning', 'Not Configured');
+                log('⚠️ ElevenLabs credentials are not configured', 'warning');
+                return false;
+            }
+        }
+
+        // Speech Recognition
+        function initializeSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) return null;
+
+            recognition = new SpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            
+            // Get selected language from dropdown
+            const languageSelect = document.getElementById('language-select');
+            let speechLang = 'en-US'; // Default
+            
+            if (languageSelect.value === 'auto') {
+                // Auto-detect from browser settings
+                const userLanguage = navigator.language || navigator.languages?.[0] || 'en-US';
+                console.log('🌍 Browser language:', userLanguage);
+                
+                // Map browser language to speech recognition language
+                if (userLanguage.startsWith('ko')) {
+                    speechLang = 'ko-KR';
+                } else if (userLanguage.startsWith('ja')) {
+                    speechLang = 'ja-JP';
+                } else if (userLanguage.startsWith('es')) {
+                    speechLang = 'es-ES';
+                } else if (userLanguage.startsWith('en')) {
+                    speechLang = 'en-US';
+                }
+            } else {
+                // Use manually selected language
+                speechLang = languageSelect.value;
+            }
+            
+            recognition.lang = speechLang;
+            log(`🎤 Speech recognition language set to: ${speechLang}`, 'info');
+
+            recognition.onstart = () => {
+                log(`🎤 Speech recognition started with language: ${speechLang}`, 'info');
+                elements.listeningStatus.textContent = `🎤 Listening in ${speechLang}... Speak now!`;
+                elements.listeningStatus.style.color = '#48bb78';
+            };
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                const confidence = event.results[0][0].confidence;
+                log(`🎤 Speech recognized: "${transcript}" (Confidence: ${confidence.toFixed(2)})`, 'success');
+                elements.messageInput.value = transcript;
+                elements.listeningStatus.textContent = `✅ Recognized: "${transcript}"`;
+                elements.listeningStatus.style.color = '#38a169';
+                
+                // Auto-send the recognized speech
+                setTimeout(() => {
+                    sendMessage(true);
+                }, 1000);
+            };
+
+            recognition.onerror = (event) => {
+                log(`❌ Speech recognition error: ${event.error}`, 'error');
+                
+                // If language error, try with English as fallback
+                if (event.error === 'language-not-supported' && speechLang !== 'en-US') {
+                    log('🎤 Language not supported, retrying with English...', 'warning');
+                    recognition.lang = 'en-US';
+                    setTimeout(() => {
+                        try {
+                            recognition.start();
+                        } catch (retryError) {
+                            log(`❌ Retry failed: ${retryError}`, 'error');
+                            elements.listeningStatus.textContent = `❌ Error: ${retryError}`;
+                            elements.listeningStatus.style.color = '#f56565';
+                            stopListening();
+                        }
+                    }, 100);
+                    return;
+                }
+                
+                elements.listeningStatus.textContent = `❌ Error: ${event.error}`;
+                elements.listeningStatus.style.color = '#f56565';
+                stopListening();
+            };
+
+            recognition.onend = () => {
+                log('🎤 Speech recognition ended', 'info');
+                if (isListening) {
+                    elements.listeningStatus.textContent = '🎤 Stopped listening';
+                    elements.listeningStatus.style.color = '#666';
+                }
+                stopListening();
+            };
+
+            return recognition;
+        }
+
+        function startListening() {
+            if (!recognition) {
+                recognition = initializeSpeechRecognition();
+            }
+            
+            if (!recognition) {
+                log('❌ Speech recognition not available', 'error');
+                return;
+            }
+
+            try {
+                isListening = true;
+                elements.startListening.disabled = true;
+                elements.stopListening.disabled = false;
+                recognition.start();
+                log('🎤 Starting speech recognition...', 'info');
+            } catch (error) {
+                log(`❌ Failed to start speech recognition: ${error.message}`, 'error');
+                stopListening();
+            }
+        }
+
+        function stopListening() {
+            isListening = false;
+            elements.startListening.disabled = false;
+            elements.stopListening.disabled = true;
+            
+            if (recognition) {
+                try {
+                    recognition.stop();
+                } catch (error) {
+                    log(`⚠️ Error stopping recognition: ${error.message}`, 'warning');
+                }
+            }
+            
+            if (elements.listeningStatus.textContent.includes('Listening')) {
+                elements.listeningStatus.textContent = '🎤 Ready to listen';
+                elements.listeningStatus.style.color = '#666';
+            }
+        }
+
+        // Text-to-Speech
+        async function speakText(text) {
+            return new Promise((resolve, reject) => {
+                try {
+                    if (!('speechSynthesis' in window)) {
+                        log('❌ Speech Synthesis not supported', 'error');
+                        resolve();
+                        return;
+                    }
+
+                    // Cancel any ongoing speech
+                    speechSynthesis.cancel();
+
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.rate = 0.9;
+                    utterance.pitch = 1.0;
+                    utterance.volume = parseFloat(elements.volumeSlider.value);
+
+                    // Try to use a good voice
+                    const voices = speechSynthesis.getVoices();
+                    const preferredVoice = voices.find(voice => 
+                        voice.name.toLowerCase().includes('female') || 
+                        voice.name.toLowerCase().includes('samantha') ||
+                        voice.name.toLowerCase().includes('karen') ||
+                        voice.lang.startsWith('en')
+                    ) || voices[0];
+
+                    if (preferredVoice) {
+                        utterance.voice = preferredVoice;
+                        log(`🔊 Using voice: ${preferredVoice.name} (${preferredVoice.lang})`, 'info');
+                    }
+
+                    utterance.onstart = () => {
+                        log('🔊 TTS playback started', 'info');
+                    };
+
+                    utterance.onend = () => {
+                        log('🔊 TTS playback completed', 'success');
+                        currentUtterance = null;
+                        resolve();
+                    };
+
+                    utterance.onerror = (event) => {
+                        log(`❌ TTS error: ${event.error}`, 'error');
+                        currentUtterance = null;
+                        reject(new Error(`TTS error: ${event.error}`));
+                    };
+
+                    currentUtterance = utterance;
+                    speechSynthesis.speak(utterance);
+
+                    // Fallback timeout
+                    setTimeout(() => {
+                        if (speechSynthesis.speaking) {
+                            speechSynthesis.cancel();
+                        }
+                        resolve();
+                    }, text.length * 100 + 5000);
+
+                } catch (error) {
+                    log(`❌ TTS initialization error: ${error.message}`, 'error');
+                    reject(error);
+                }
+            });
+        }
+
+        // API Communication
+        async function sendMessage(withTTS = false) {
+            const message = elements.messageInput.value.trim();
+            if (!message) {
+                log('❌ Please enter a message', 'error');
+                return;
+            }
+
+            try {
+                log(`📤 Sending message: "${message}"`, 'info');
+                
+                // Prepare form data
+                const formData = new FormData();
+                formData.append('text', message);
+
+                const response = await fetch(`${API_BASE_URL}/chat`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                log('✅ Response received from backend', 'success');
+
+                // Display response
+                displayResponse(data);
+
+                // Play TTS if requested
+                if (withTTS && data.advice) {
+                    // Extract brief summary for TTS
+                    let textToSpeak = data.advice;
+                    if (data.advice.includes('BRIEF:')) {
+                        const briefMatch = data.advice.match(/BRIEF:\s*([^]*?)(?:\n\nDETAILED:|$)/);
+                        if (briefMatch) {
+                            textToSpeak = briefMatch[1].trim();
+                        }
+                    }
+                    
+                    log(`🔊 Playing TTS response...`, 'info');
+                    await playElevenLabsTTS(textToSpeak);
+                }
+
+            } catch (error) {
+                log(`❌ Failed to send message: ${error.message}`, 'error');
+                elements.responseContainer.innerHTML = `
+                    <div style="color: #f56565; padding: 15px; border: 1px solid #fed7d7; border-radius: 6px; background: #fef5e7;">
+                        <strong>Error:</strong> ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // ElevenLabs TTS function with multilingual support
+        async function playElevenLabsTTS(text) {
+            try {
+                log('🔊 Attempting ElevenLabs TTS API...', 'info');
+                
+                // Detect language of the text
+                const language = detectLanguage(text);
+                log(`🌍 Detected text language: ${language}`, 'info');
+                
+                // Select voice and model based on language
+                let voiceId = '21m00Tcm4TlvDq8ikWAM'; // Default English voice
+                let modelId = 'eleven_monolingual_v1';
+                
+                if (language === 'ko' || language === 'ja' || language === 'es') {
+                    // Use multilingual model for non-English languages
+                    modelId = 'eleven_multilingual_v2';
+                    log(`🔊 Using multilingual model for language: ${language}`, 'info');
+                }
+                
+                const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'audio/mpeg',
+                        'Content-Type': 'application/json',
+                        'xi-api-key': ELEVENLABS_API_KEY
+                    },
+                    body: JSON.stringify({
+                        text: text,
+                        model_id: modelId,
+                        voice_settings: {
+                            stability: 0.5,
+                            similarity_boost: 0.5,
+                            style: 0.0,
+                            use_speaker_boost: true
+                        }
+                    })
+                });
+
+                if (response.ok) {
+                    const audioBlob = await response.blob();
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    const audio = new Audio(audioUrl);
+                    
+                    return new Promise((resolve, reject) => {
+                        audio.onended = () => {
+                            URL.revokeObjectURL(audioUrl);
+                            log('✅ ElevenLabs TTS playback completed', 'success');
+                            resolve();
+                        };
+                        
+                        audio.onerror = (error) => {
+                            URL.revokeObjectURL(audioUrl);
+                            log(`❌ ElevenLabs audio playback error: ${error}`, 'error');
+                            reject(error);
+                        };
+                        
+                        audio.onloadstart = () => {
+                            log('🔊 ElevenLabs TTS playback started', 'info');
+                        };
+                        
+                        audio.play().catch(reject);
+                    });
+                } else {
+                    log(`❌ ElevenLabs API failed, status: ${response.status}`, 'error');
+                    throw new Error(`ElevenLabs API failed: ${response.status}`);
+                }
+            } catch (error) {
+                log(`❌ ElevenLabs TTS failed: ${error.message}`, 'error');
+                // Fallback to browser TTS with language support
+                await speakTextWithLanguage(text);
+            }
+        }
+
+        // Language detection function
+        function detectLanguage(text) {
+            // Remove punctuation and convert to lowercase for analysis
+            const cleanText = text.replace(/[^\w\s]/g, '').toLowerCase();
+            
+            // Korean detection - look for Hangul characters
+            if (/[가-힣]/.test(text)) {
+                return 'ko';
+            }
+            
+            // Japanese detection - look for Hiragana, Katakana, or Kanji
+            if (/[ひらがなカタカナ一-龯]/.test(text)) {
+                return 'ja';
+            }
+            
+            // Spanish detection - look for Spanish-specific words and patterns
+            const spanishIndicators = [
+                'dolor', 'cabeza', 'estómago', 'fiebre', 'náuseas', 'mareo', 'sangre',
+                'herida', 'corte', 'quemadura', 'fractura', 'emergencia', 'hospital',
+                'médico', 'ayuda', 'duele', 'siento', 'tengo', 'estoy', 'me duele'
+            ];
+            
+            if (spanishIndicators.some(indicator => cleanText.includes(indicator))) {
+                return 'es';
+            }
+            
+            // Default to English
+            return 'en';
+        }
+
+        // Enhanced browser TTS with language support
+        async function speakTextWithLanguage(text) {
+            return new Promise((resolve, reject) => {
+                try {
+                    if (!('speechSynthesis' in window)) {
+                        log('❌ Speech Synthesis not supported', 'error');
+                        resolve();
+                        return;
+                    }
+
+                    // Cancel any ongoing speech
+                    speechSynthesis.cancel();
+
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.rate = 0.85;
+                    utterance.pitch = 1.0;
+                    utterance.volume = parseFloat(elements.volumeSlider.value);
+
+                    // Detect language and set appropriate voice
+                    const language = detectLanguage(text);
+                    const voices = speechSynthesis.getVoices();
+                    let preferredVoice = null;
+                    
+                    if (language === 'ko') {
+                        preferredVoice = voices.find(voice => 
+                            voice.lang.startsWith('ko') && 
+                            (voice.name.toLowerCase().includes('female') || voice.localService)
+                        ) || voices.find(voice => voice.lang.startsWith('ko'));
+                        utterance.lang = 'ko-KR';
+                    } else if (language === 'ja') {
+                        preferredVoice = voices.find(voice => 
+                            voice.lang.startsWith('ja') && 
+                            (voice.name.toLowerCase().includes('female') || voice.localService)
+                        ) || voices.find(voice => voice.lang.startsWith('ja'));
+                        utterance.lang = 'ja-JP';
+                    } else if (language === 'es') {
+                        preferredVoice = voices.find(voice => 
+                            voice.lang.startsWith('es') && 
+                            (voice.name.toLowerCase().includes('female') || voice.localService)
+                        ) || voices.find(voice => voice.lang.startsWith('es'));
+                        utterance.lang = 'es-ES';
+                    } else {
+                        // English voices
+                        utterance.lang = 'en-US';
+                        preferredVoice = voices.find(voice => 
+                            voice.lang.startsWith('en') && 
+                            (voice.name.toLowerCase().includes('female') || 
+                             voice.name.toLowerCase().includes('samantha') ||
+                             voice.name.toLowerCase().includes('karen') ||
+                             voice.localService)
+                        ) || voices.find(voice => voice.lang.startsWith('en'));
+                    }
+
+                    if (preferredVoice) {
+                        utterance.voice = preferredVoice;
+                        log(`🔊 Using voice: ${preferredVoice.name} (${preferredVoice.lang})`, 'info');
+                    }
+
+                    utterance.onstart = () => {
+                        log('🔊 TTS playback started', 'info');
+                    };
+
+                    utterance.onend = () => {
+                        log('🔊 TTS playback completed', 'success');
+                        currentUtterance = null;
+                        resolve();
+                    };
+
+                    utterance.onerror = (event) => {
+                        log(`❌ TTS error: ${event.error}`, 'error');
+                        currentUtterance = null;
+                        reject(new Error(`TTS error: ${event.error}`));
+                    };
+
+                    currentUtterance = utterance;
+                    speechSynthesis.speak(utterance);
+
+                    // Fallback timeout
+                    setTimeout(() => {
+                        if (speechSynthesis.speaking) {
+                            speechSynthesis.cancel();
+                        }
+                        resolve();
+                    }, text.length * 120 + 8000);
+
+                } catch (error) {
+                    log(`❌ TTS initialization error: ${error.message}`, 'error');
+                    reject(error);
+                }
+            });
+        }
+
+        function displayResponse(data) {
+            let html = '<div class="response-box">';
+            
+            if (data.advice) {
+                // Split into brief and detailed if available
+                if (data.advice.includes('BRIEF:') && data.advice.includes('DETAILED:')) {
+                    const parts = data.advice.split('DETAILED:');
+                    const brief = parts[0].replace('BRIEF:', '').trim();
+                    const detailed = parts[1].trim();
+                    
+                    html += `<h4 style="color: #2d3748; margin-top: 0;">Quick Summary:</h4>`;
+                    html += `<p style="background: #e6fffa; padding: 10px; border-radius: 4px; border-left: 4px solid #38b2ac;">${brief}</p>`;
+                    html += `<h4 style="color: #2d3748;">Detailed Advice:</h4>`;
+                    html += `<div style="white-space: pre-wrap;">${detailed}</div>`;
+                } else {
+                    html += `<div style="white-space: pre-wrap;">${data.advice}</div>`;
+                }
+            }
+            
+            if (data.hospitals && data.hospitals.length > 0) {
+                html += `<h4 style="color: #2d3748; margin-top: 20px;">Nearby Hospitals:</h4>`;
+                data.hospitals.forEach(hospital => {
+                    html += `<div style="margin: 10px 0; padding: 10px; background: #f0f8ff; border-radius: 4px;">`;
+                    html += `<strong>${hospital.name}</strong><br>`;
+                    html += `📍 ${hospital.address}<br>`;
+                    if (hospital.phone) html += `📞 ${hospital.phone}<br>`;
+                    if (hospital.distance) html += `📏 ${hospital.distance}`;
+                    html += `</div>`;
+                });
+            }
+            
+            html += `<div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #666;">`;
+            html += `Confidence: ${data.confidence_level || 'Unknown'} | `;
+            html += `Time: ${new Date(data.timestamp).toLocaleTimeString()}`;
+            html += `</div>`;
+            
+            html += '</div>';
+            
+            elements.responseContainer.innerHTML = html;
+        }
+
+        // Utility Functions
+        function setMessage(message) {
+            elements.messageInput.value = message;
+            log(`📝 Set message: "${message}"`, 'info');
+        }
+
+        // Event Listeners
+        elements.startListening.addEventListener('click', startListening);
+        elements.stopListening.addEventListener('click', stopListening);
+        elements.sendText.addEventListener('click', () => sendMessage(false));
+        elements.sendVoice.addEventListener('click', () => sendMessage(true));
+        elements.testTtsOnly.addEventListener('click', async () => {
+            const message = elements.messageInput.value.trim() || 'This is a test of the high-quality ElevenLabs text-to-speech functionality. You should hear natural, flowing speech instead of robotic word-by-word pronunciation.';
+            
+            try {
+                await playElevenLabsTTS(message);
+            } catch (error) {
+                log(`❌ TTS test failed: ${error.message}`, 'error');
+            }
+        });
+
+        elements.volumeSlider.addEventListener('input', (e) => {
+            const volume = Math.round(e.target.value * 100);
+            elements.volumeDisplay.textContent = `${volume}%`;
+        });
+
+        elements.messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage(true);
+            }
+        });
+
+        // Language selection change handler
+        document.getElementById('language-select').addEventListener('change', (e) => {
+            const selectedLang = e.target.value;
+            log(`🌍 Language selection changed to: ${selectedLang}`, 'info');
+            
+            // Update placeholder text based on selected language
+            const messageInput = elements.messageInput;
+            if (selectedLang === 'ko-KR') {
+                messageInput.placeholder = '의료 질문을 입력하거나 증상을 설명해주세요... (한국어 지원)';
+            } else if (selectedLang === 'ja-JP') {
+                messageInput.placeholder = '医療に関する質問や症状を入力してください... (日本語対応)';
+            } else if (selectedLang === 'es-ES') {
+                messageInput.placeholder = 'Ingrese su pregunta médica o describa los síntomas... (Español soportado)';
+            } else {
+                messageInput.placeholder = 'Enter your medical question or describe symptoms... (English, 한국어, 日本語, Español supported)';
+            }
+            
+            // If currently listening, restart with new language
+            if (isListening) {
+                stopListening();
+                setTimeout(() => {
+                    startListening();
+                }, 500);
+            }
+        });
+
+        // Make setMessage globally available
+        window.setMessage = setMessage;
+
+        // Initialize
+        async function initialize() {
+            log('🚀 Initializing Voice Integration Test', 'info');
+            
+            // Run system checks
+            await checkBackend();
+            checkTTS();
+            checkSTT();
+            checkElevenLabs();
+            
+            log('✅ System checks completed', 'success');
+            log('🎤 Ready for voice testing!', 'info');
+        }
+
+        // Start initialization when page loads
+        document.addEventListener('DOMContentLoaded', initialize);
+    </script>
+</body>
+</html>

@@ -2,7 +2,6 @@
 
 ## Overview
 
-FirstAidVox UI 재디자인은 현대적인 채팅 인터페이스를 구현하여 사용자 경험을 크게 개선합니다. 모바일 우선 설계와 Tailwind CSS를 활용하여 반응형이면서도 시각적으로 임팩트 있는 의료 상담 플랫폼을 구축합니다.
 
 ## Architecture
 

@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>마이크 디버깅 테스트</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+        #log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        #audioLevel {
+            width: 100%;
+            height: 20px;
+            background: #ddd;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        #audioLevelBar {
+            height: 100%;
+            background: linear-gradient(to right, #4CAF50, #FFC107, #F44336);
+            width: 0%;
+            transition: width 0.1s;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 마이크 디버깅 테스트</h1>
+        <p>음성 인식 문제를 진단하고 해결하기 위한 테스트입니다.</p>
+
+        <div class="test-section">
+            <h3>1. 마이크 권한 테스트</h3>
+            <div id="mic-status"></div>
+            <button onclick="testMicrophoneAccess()">마이크 권한 테스트</button>
+        </div>
+
+        <div class="test-section">
+            <h3>2. 오디오 레벨 모니터링</h3>
+            <div id="audio-status"></div>
+            <div id="audioLevel">
+                <div id="audioLevelBar"></div>
+            </div>
+            <p>현재 오디오 레벨: <span id="audioLevelText">0%</span></p>
+            <button onclick="startAudioMonitoring()" id="start-monitor">오디오 모니터링 시작</button>
+            <button onclick="stopAudioMonitoring()" id="stop-monitor" disabled>오디오 모니터링 중지</button>
+        </div>
+
+        <div class="test-section">
+            <h3>3. Web Speech API 테스트</h3>
+            <div id="speech-status"></div>
+            <button onclick="testWebSpeechAPI()" id="speech-btn">음성 인식 테스트</button>
+            <p>인식된 텍스트: <span id="recognizedText">없음</span></p>
+        </div>
+
+        <div class="test-section">
+            <h3>4. ElevenLabs 연결 테스트</h3>
+            <div id="elevenlabs-status"></div>
+            <button onclick="testElevenLabsConnection()" id="elevenlabs-btn">ElevenLabs 연결 테스트</button>
+        </div>
+
+        <div class="test-section">
+            <h3>디버그 로그</h3>
+            <div id="log"></div>
+            <button onclick="clearLog()">로그 지우기</button>
+        </div>
+    </div>
+
+    <script type="module">
+        let audioContext = null;
+        let microphone = null;
+        let analyser = null;
+        let dataArray = null;
+        let animationId = null;
+        let conversation = null;
+
+        // 로깅 함수
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logElement = document.getElementById('log');
+            const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : type === 'warning' ? '⚠️' : 'ℹ️';
+            logElement.textContent += `[${timestamp}] ${prefix} ${message}\n`;
+            logElement.scrollTop = logElement.scrollHeight;
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        // 1. 마이크 권한 테스트
+        window.testMicrophoneAccess = async function() {
+            const statusElement = document.getElementById('mic-status');
+            
+            try {
+                statusElement.innerHTML = '<div class="info">🔄 마이크 권한 요청 중...</div>';
+                log('마이크 권한 테스트 시작');
+                
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        sampleRate: 44100
+                    } 
+                });
+                
+                log('✅ 마이크 권한 획득 성공', 'success');
+                
+                // 마이크 정보 확인
+                const audioTracks = stream.getAudioTracks();
+                if (audioTracks.length > 0) {
+                    const track = audioTracks[0];
+                    const settings = track.getSettings();
+                    log(`마이크 정보: ${track.label}`, 'success');
+                    log(`샘플레이트: ${settings.sampleRate}Hz, 채널: ${settings.channelCount}`, 'info');
+                    
+                    statusElement.innerHTML = `
+                        <div class="success">✅ 마이크 권한 획득 성공</div>
+                        <p><strong>마이크:</strong> ${track.label}</p>
+                        <p><strong>샘플레이트:</strong> ${settings.sampleRate}Hz</p>
+                        <p><strong>채널:</strong> ${settings.channelCount}</p>
+                    `;
+                } else {
+                    throw new Error('오디오 트랙을 찾을 수 없습니다');
+                }
+                
+                // 스트림 정리
+                stream.getTracks().forEach(track => track.stop());
+                
+            } catch (error) {
+                log(`❌ 마이크 권한 오류: ${error.message}`, 'error');
+                statusElement.innerHTML = `<div class="error">❌ 마이크 권한 오류: ${error.message}</div>`;
+                
+                if (error.name === 'NotAllowedError') {
+                    statusElement.innerHTML += '<p>브라우저 설정에서 마이크 권한을 허용해주세요.</p>';
+                } else if (error.name === 'NotFoundError') {
+                    statusElement.innerHTML += '<p>마이크가 연결되어 있는지 확인해주세요.</p>';
+                }
+            }
+        };
+
+        // 2. 오디오 레벨 모니터링
+        window.startAudioMonitoring = async function() {
+            const statusElement = document.getElementById('audio-status');
+            const startBtn = document.getElementById('start-monitor');
+            const stopBtn = document.getElementById('stop-monitor');
+            
+            try {
+                statusElement.innerHTML = '<div class="info">🔄 오디오 모니터링 시작 중...</div>';
+                log('오디오 레벨 모니터링 시작');
+                
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: false, // 디버깅을 위해 끄기
+                        noiseSuppression: false,
+                        autoGainControl: false
+                    } 
+                });
+                
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                microphone = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                
+                analyser.fftSize = 256;
+                const bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+                
+                microphone.connect(analyser);
+                
+                function updateAudioLevel() {
+                    analyser.getByteFrequencyData(dataArray);
+                    
+                    let sum = 0;
+                    for (let i = 0; i < bufferLength; i++) {
+                        sum += dataArray[i];
+                    }
+                    const average = sum / bufferLength;
+                    const percentage = Math.round((average / 255) * 100);
+                    
+                    document.getElementById('audioLevelBar').style.width = percentage + '%';
+                    document.getElementById('audioLevelText').textContent = percentage + '%';
+                    
+                    if (percentage > 5) {
+                        log(`오디오 감지: ${percentage}%`, 'success');
+                    }
+                    
+                    animationId = requestAnimationFrame(updateAudioLevel);
+                }
+                
+                updateAudioLevel();
+                
+                statusElement.innerHTML = '<div class="success">✅ 오디오 모니터링 활성화</div>';
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                log('✅ 오디오 모니터링 활성화됨', 'success');
+                
+            } catch (error) {
+                log(`❌ 오디오 모니터링 오류: ${error.message}`, 'error');
+                statusElement.innerHTML = `<div class="error">❌ 오디오 모니터링 오류: ${error.message}</div>`;
+            }
+        };
+
+        window.stopAudioMonitoring = function() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+            
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+            
+            document.getElementById('audioLevelBar').style.width = '0%';
+            document.getElementById('audioLevelText').textContent = '0%';
+            document.getElementById('audio-status').innerHTML = '<div class="info">오디오 모니터링 중지됨</div>';
+            document.getElementById('start-monitor').disabled = false;
+            document.getElementById('stop-monitor').disabled = true;
+            
+            log('오디오 모니터링 중지됨', 'info');
+        };
+
+        // 3. Web Speech API 테스트
+        window.testWebSpeechAPI = function() {
+            const statusElement = document.getElementById('speech-status');
+            const recognizedElement = document.getElementById('recognizedText');
+            
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                statusElement.innerHTML = '<div class="error">❌ Web Speech API가 지원되지 않습니다</div>';
+                log('❌ Web Speech API 지원되지 않음', 'error');
+                return;
+            }
+            
+            try {
+                statusElement.innerHTML = '<div class="info">🔄 음성 인식 시작 중...</div>';
+                log('Web Speech API 테스트 시작');
+                
+                const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
+                const recognition = new SpeechRecognition();
+                
+                recognition.continuous = false;
+                recognition.interimResults = true;
+                recognition.lang = 'ko-KR'; // 한국어로 설정
+                
+                recognition.onstart = () => {
+                    statusElement.innerHTML = '<div class="success">✅ 음성 인식 활성화 - 말씀해주세요!</div>';
+                    log('✅ Web Speech API 음성 인식 시작됨', 'success');
+                };
+                
+                recognition.onresult = (event) => {
+                    let transcript = '';
+                    for (let i = event.resultIndex; i < event.results.length; i++) {
+                        transcript += event.results[i][0].transcript;
+                    }
+                    
+                    recognizedElement.textContent = transcript;
+                    log(`음성 인식 결과: "${transcript}" (신뢰도: ${Math.round(event.results[0][0].confidence * 100)}%)`, 'success');
+                };
+                
+                recognition.onerror = (event) => {
+                    log(`❌ Web Speech API 오류: ${event.error}`, 'error');
+                    statusElement.innerHTML = `<div class="error">❌ 음성 인식 오류: ${event.error}</div>`;
+                };
+                
+                recognition.onend = () => {
+                    statusElement.innerHTML = '<div class="info">음성 인식 종료됨</div>';
+                    log('Web Speech API 음성 인식 종료됨', 'info');
+                };
+                
+                recognition.start();
+                
+            } catch (error) {
+                log(`❌ Web Speech API 테스트 오류: ${error.message}`, 'error');
+                statusElement.innerHTML = `<div class="error">❌ Web Speech API 테스트 오류: ${error.message}</div>`;
+            }
+        };
+
+        // 4. ElevenLabs 연결 테스트
+        window.testElevenLabsConnection = async function() {
+            const statusElement = document.getElementById('elevenlabs-status');
+            
+            try {
+                statusElement.innerHTML = '<div class="info">🔄 ElevenLabs 연결 테스트 중...</div>';
+                log('ElevenLabs 연결 테스트 시작');
+                
+                const agentId = import.meta.env.VITE_ELEVENLABS_AGENT_ID;
+                if (!agentId) {
+                    throw new Error('ElevenLabs Agent ID가 설정되지 않았습니다');
+                }
+                
+                log(`Agent ID: ${agentId}`);
+                
+                // ElevenLabs 라이브러리 import
+                const { Conversation } = await import('@elevenlabs/client');
+                log('✅ ElevenLabs 라이브러리 로드 성공', 'success');
+                
+                // 마이크 권한 먼저 요청
+                await navigator.mediaDevices.getUserMedia({ audio: true });
+                log('✅ 마이크 권한 확인됨', 'success');
+                
+                // ElevenLabs 대화 세션 생성
+                conversation = await Conversation.startSession({
+                    agentId: agentId,
+                    connectionType: 'webrtc',
+                    onConnect: () => {
+                        log('✅ ElevenLabs 연결 성공', 'success');
+                        statusElement.innerHTML = '<div class="success">✅ ElevenLabs 연결 성공</div>';
+                    },
+                    onDisconnect: () => {
+                        log('ElevenLabs 연결 해제됨', 'warning');
+                    },
+                    onError: (error) => {
+                        log(`❌ ElevenLabs 오류: ${error.message || error}`, 'error');
+                        statusElement.innerHTML = `<div class="error">❌ ElevenLabs 오류: ${error.message || error}</div>`;
+                    },
+                    onMessage: (message) => {
+                        log(`ElevenLabs 메시지: ${JSON.stringify(message)}`, 'info');
+                        
+                        // 빈 메시지 감지
+                        if (message.source === 'user' && (message.message === '...' || !message.message.trim())) {
+                            log('⚠️ 빈 사용자 메시지 감지됨 - 음성 인식 문제 가능성', 'warning');
+                            statusElement.innerHTML += '<div class="warning">⚠️ 빈 메시지 감지 - 마이크 설정을 확인해주세요</div>';
+                        }
+                    },
+                    onModeChange: (mode) => {
+                        log(`ElevenLabs 모드 변경: ${JSON.stringify(mode)}`, 'info');
+                    }
+                });
+                
+                log(`✅ ElevenLabs 대화 세션 생성됨: ${conversation.getId()}`, 'success');
+                
+            } catch (error) {
+                log(`❌ ElevenLabs 연결 테스트 오류: ${error.message}`, 'error');
+                statusElement.innerHTML = `<div class="error">❌ ElevenLabs 연결 오류: ${error.message}</div>`;
+            }
+        };
+
+        // 로그 지우기
+        window.clearLog = function() {
+            document.getElementById('log').textContent = '';
+        };
+
+        // 초기화
+        log('🎤 마이크 디버깅 테스트 초기화됨');
+        log('1. 먼저 마이크 권한을 테스트해주세요');
+        log('2. 오디오 레벨 모니터링으로 마이크가 소리를 감지하는지 확인해주세요');
+        log('3. Web Speech API로 음성 인식이 작동하는지 테스트해주세요');
+        log('4. ElevenLabs 연결을 테스트해주세요');
+    </script>
+</body>
+</html>

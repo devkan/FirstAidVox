@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Send Button Debug</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        medical: {
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="p-8">
+    <h1 class="text-2xl font-bold mb-4">Send Button Debug Test</h1>
+    
+    <div class="max-w-md mx-auto">
+        <div class="flex items-end space-x-3 p-4 border rounded-lg">
+            <input 
+                type="text" 
+                id="testInput"
+                placeholder="Type a message..."
+                class="flex-1 px-3 py-2 border rounded-lg"
+                oninput="updateSendButton()"
+            >
+            
+            <button
+                id="sendButton"
+                onclick="sendMessage()"
+                disabled
+                class="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-all bg-gray-300 text-gray-500 cursor-not-allowed"
+                title="Send message"
+            >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+            </button>
+        </div>
+        
+        <div id="output" class="mt-4 p-4 bg-gray-100 rounded-lg min-h-20">
+            <p class="text-gray-600">Type a message to test the send button...</p>
+        </div>
+    </div>
+
+    <script>
+        function updateSendButton() {
+            const input = document.getElementById('testInput');
+            const button = document.getElementById('sendButton');
+            const canSend = input.value.trim().length > 0;
+            
+            console.log('Input value:', input.value);
+            console.log('Can send:', canSend);
+            
+            if (canSend) {
+                button.disabled = false;
+                button.className = 'flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-all bg-blue-500 hover:bg-blue-600 text-white shadow-md';
+            } else {
+                button.disabled = true;
+                button.className = 'flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-all bg-gray-300 text-gray-500 cursor-not-allowed';
+            }
+        }
+        
+        function sendMessage() {
+            const input = document.getElementById('testInput');
+            const output = document.getElementById('output');
+            
+            if (input.value.trim()) {
+                output.innerHTML = `<p class="text-green-600">✅ Message sent: "${input.value}"</p>`;
+                input.value = '';
+                updateSendButton();
+            }
+        }
+        
+        // Allow Enter key to send
+        document.getElementById('testInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (!document.getElementById('sendButton').disabled) {
+                    sendMessage();
+                }
+            }
+        });
+    </script>
+</body>
+</html>

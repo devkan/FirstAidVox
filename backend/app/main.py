@@ -79,7 +79,7 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if settings.debug else None
     )
     
-    # Add CORS middleware
+    # Add CORS middleware with proper encoding support
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

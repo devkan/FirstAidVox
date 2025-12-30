@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ElevenLabs Integration Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+        #log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 ElevenLabs Integration Test</h1>
+        <p>Testing the fixed ElevenLabs integration with proper error handling</p>
+
+        <div class="test-section">
+            <h3>1. Environment Check</h3>
+            <div id="env-status"></div>
+            <button onclick="checkEnvironment()">Check Environment</button>
+        </div>
+
+        <div class="test-section">
+            <h3>2. ElevenLabs Connection Test</h3>
+            <div id="connection-status"></div>
+            <button onclick="testElevenLabsConnection()" id="connect-btn">Test Connection</button>
+            <button onclick="disconnectElevenLabs()" id="disconnect-btn" disabled>Disconnect</button>
+        </div>
+
+        <div class="test-section">
+            <h3>3. Voice Message Test</h3>
+            <div id="voice-status"></div>
+            <input type="text" id="test-message" placeholder="Enter test message" value="Hello, this is a test message">
+            <button onclick="testVoiceMessage()" id="voice-btn" disabled>Send Voice Message</button>
+        </div>
+
+        <div class="test-section">
+            <h3>4. Markdown Parsing Test</h3>
+            <div id="markdown-status"></div>
+            <button onclick="testMarkdownParsing()">Test Markdown Parsing</button>
+        </div>
+
+        <div class="test-section">
+            <h3>Debug Log</h3>
+            <div id="log"></div>
+            <button onclick="clearLog()">Clear Log</button>
+        </div>
+    </div>
+
+    <script type="module">
+        let conversation = null;
+        let voiceAgent = null;
+
+        // Logging function
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logElement = document.getElementById('log');
+            const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : type === 'warning' ? '⚠️' : 'ℹ️';
+            logElement.textContent += `[${timestamp}] ${prefix} ${message}\n`;
+            logElement.scrollTop = logElement.scrollHeight;
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        // Environment check
+        window.checkEnvironment = function() {
+            const envStatus = document.getElementById('env-status');
+            let status = '';
+            
+            // Check for required environment variables
+            const agentId = import.meta.env.VITE_ELEVENLABS_AGENT_ID;
+            const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
+            
+            log(`Agent ID: ${agentId ? 'Found' : 'Missing'}`);
+            log(`API Key: ${apiKey ? 'Found' : 'Missing'}`);
+            
+            if (agentId && apiKey) {
+                status = '<div class="success">✅ Environment variables found</div>';
+                log('Environment check passed', 'success');
+            } else {
+                status = '<div class="error">❌ Missing environment variables</div>';
+                log('Environment check failed - missing variables', 'error');
+            }
+            
+            // Check browser capabilities
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                status += '<div class="success">✅ Web Speech API supported</div>';
+                log('Web Speech API supported', 'success');
+            } else {
+                status += '<div class="warning">⚠️ Web Speech API not supported</div>';
+                log('Web Speech API not supported', 'warning');
+            }
+            
+            if ('speechSynthesis' in window) {
+                status += '<div class="success">✅ Speech Synthesis supported</div>';
+                log('Speech Synthesis supported', 'success');
+            } else {
+                status += '<div class="warning">⚠️ Speech Synthesis not supported</div>';
+                log('Speech Synthesis not supported', 'warning');
+            }
+            
+            envStatus.innerHTML = status;
+        };
+
+        // Test ElevenLabs connection
+        window.testElevenLabsConnection = async function() {
+            const statusElement = document.getElementById('connection-status');
+            const connectBtn = document.getElementById('connect-btn');
+            const disconnectBtn = document.getElementById('disconnect-btn');
+            const voiceBtn = document.getElementById('voice-btn');
+            
+            try {
+                connectBtn.disabled = true;
+                statusElement.innerHTML = '<div class="info">🔄 Connecting to ElevenLabs...</div>';
+                log('Starting ElevenLabs connection test');
+                
+                const agentId = import.meta.env.VITE_ELEVENLABS_AGENT_ID;
+                if (!agentId) {
+                    throw new Error('ElevenLabs Agent ID not found in environment');
+                }
+                
+                log(`Using Agent ID: ${agentId}`);
+                
+                // Import ElevenLabs Conversation class
+                const { Conversation } = await import('@elevenlabs/client');
+                log('ElevenLabs client imported successfully', 'success');
+                
+                // Create conversation session
+                conversation = await Conversation.startSession({
+                    agentId: agentId,
+                    connectionType: 'webrtc',
+                    onConnect: () => {
+                        log('ElevenLabs conversation connected', 'success');
+                        statusElement.innerHTML = '<div class="success">✅ Connected to ElevenLabs</div>';
+                        disconnectBtn.disabled = false;
+                        voiceBtn.disabled = false;
+                    },
+                    onDisconnect: () => {
+                        log('ElevenLabs conversation disconnected', 'warning');
+                        statusElement.innerHTML = '<div class="warning">⚠️ Disconnected from ElevenLabs</div>';
+                        connectBtn.disabled = false;
+                        disconnectBtn.disabled = true;
+                        voiceBtn.disabled = true;
+                    },
+                    onError: (error) => {
+                        log(`ElevenLabs error: ${error.message || error}`, 'error');
+                        statusElement.innerHTML = `<div class="error">❌ Error: ${error.message || error}</div>`;
+                        connectBtn.disabled = false;
+                        disconnectBtn.disabled = true;
+                        voiceBtn.disabled = true;
+                    },
+                    onMessage: (message) => {
+                        log(`ElevenLabs message: ${JSON.stringify(message)}`, 'success');
+                        
+                        // Test the message parsing that was causing errors
+                        try {
+                            let textContent;
+                            if (typeof message === 'string') {
+                                textContent = message;
+                            } else if (message && typeof message === 'object') {
+                                textContent = message.message || message.text || message.content || JSON.stringify(message);
+                            } else {
+                                textContent = String(message || '');
+                            }
+                            log(`Parsed message content: ${textContent}`, 'success');
+                        } catch (parseError) {
+                            log(`Message parsing error: ${parseError.message}`, 'error');
+                        }
+                    },
+                    onModeChange: (mode) => {
+                        log(`ElevenLabs mode change: ${JSON.stringify(mode)}`);
+                        
+                        // Test the mode mapping that was causing errors
+                        try {
+                            let modeString;
+                            if (typeof mode === 'string') {
+                                modeString = mode;
+                            } else if (mode && typeof mode === 'object') {
+                                if (mode.mode) {
+                                    modeString = mode.mode;
+                                } else if (mode.status) {
+                                    modeString = mode.status;
+                                } else if (mode.state) {
+                                    modeString = mode.state;
+                                } else {
+                                    modeString = String(mode);
+                                }
+                            } else {
+                                modeString = String(mode);
+                            }
+                            
+                            if (typeof modeString === 'string') {
+                                const mappedMode = modeString.toLowerCase();
+                                log(`Mapped mode: ${mappedMode}`, 'success');
+                            } else {
+                                log(`Mode mapping failed - not a string: ${typeof modeString}`, 'error');
+                            }
+                        } catch (modeError) {
+                            log(`Mode mapping error: ${modeError.message}`, 'error');
+                        }
+                    },
+                    onVolumeChange: (volume) => {
+                        log(`ElevenLabs volume: ${volume}`);
+                    }
+                });
+                
+                log(`ElevenLabs conversation created: ${conversation.getId()}`, 'success');
+                
+            } catch (error) {
+                log(`Connection failed: ${error.message}`, 'error');
+                statusElement.innerHTML = `<div class="error">❌ Connection failed: ${error.message}</div>`;
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                voiceBtn.disabled = true;
+            }
+        };
+
+        // Disconnect ElevenLabs
+        window.disconnectElevenLabs = async function() {
+            if (conversation) {
+                try {
+                    await conversation.endSession();
+                    log('ElevenLabs session ended', 'success');
+                } catch (error) {
+                    log(`Disconnect error: ${error.message}`, 'error');
+                }
+                conversation = null;
+            }
+        };
+
+        // Test voice message
+        window.testVoiceMessage = async function() {
+            const statusElement = document.getElementById('voice-status');
+            const messageInput = document.getElementById('test-message');
+            const message = messageInput.value.trim();
+            
+            if (!message) {
+                statusElement.innerHTML = '<div class="error">❌ Please enter a test message</div>';
+                return;
+            }
+            
+            if (!conversation) {
+                statusElement.innerHTML = '<div class="error">❌ Not connected to ElevenLabs</div>';
+                return;
+            }
+            
+            try {
+                statusElement.innerHTML = '<div class="info">🔄 Sending message...</div>';
+                log(`Sending message: ${message}`);
+                
+                await conversation.sendUserMessage(message);
+                log('Message sent successfully', 'success');
+                statusElement.innerHTML = '<div class="success">✅ Message sent successfully</div>';
+                
+            } catch (error) {
+                log(`Send message error: ${error.message}`, 'error');
+                statusElement.innerHTML = `<div class="error">❌ Send failed: ${error.message}</div>`;
+            }
+        };
+
+        // Test markdown parsing
+        window.testMarkdownParsing = async function() {
+            const statusElement = document.getElementById('markdown-status');
+            
+            try {
+                statusElement.innerHTML = '<div class="info">🔄 Testing markdown parsing...</div>';
+                log('Testing markdown parsing');
+                
+                // Import marked
+                const { marked } = await import('marked');
+                log('Marked library imported successfully', 'success');
+                
+                // Test cases that were causing errors
+                const testCases = [
+                    "Simple text",
+                    { message: "Object with message property" },
+                    { text: "Object with text property" },
+                    { content: "Object with content property" },
+                    { message: "**Bold text** and *italic text*" },
+                    null,
+                    undefined,
+                    123,
+                    { nested: { message: "Nested object" } }
+                ];
+                
+                let allPassed = true;
+                
+                for (const testCase of testCases) {
+                    try {
+                        log(`Testing: ${JSON.stringify(testCase)}`);
+                        
+                        // Use the same logic as in MessageBubble component
+                        let textContent;
+                        if (typeof testCase === 'string') {
+                            textContent = testCase;
+                        } else if (testCase && typeof testCase === 'object') {
+                            textContent = testCase.message || testCase.text || testCase.content || JSON.stringify(testCase);
+                        } else {
+                            textContent = String(testCase || '');
+                        }
+                        
+                        const html = marked(textContent);
+                        log(`✅ Parsed successfully: ${textContent} -> ${html.substring(0, 50)}...`, 'success');
+                        
+                    } catch (error) {
+                        log(`❌ Parse failed for ${JSON.stringify(testCase)}: ${error.message}`, 'error');
+                        allPassed = false;
+                    }
+                }
+                
+                if (allPassed) {
+                    statusElement.innerHTML = '<div class="success">✅ All markdown parsing tests passed</div>';
+                    log('All markdown parsing tests passed', 'success');
+                } else {
+                    statusElement.innerHTML = '<div class="error">❌ Some markdown parsing tests failed</div>';
+                    log('Some markdown parsing tests failed', 'error');
+                }
+                
+            } catch (error) {
+                log(`Markdown test error: ${error.message}`, 'error');
+                statusElement.innerHTML = `<div class="error">❌ Markdown test failed: ${error.message}</div>`;
+            }
+        };
+
+        // Clear log
+        window.clearLog = function() {
+            document.getElementById('log').textContent = '';
+        };
+
+        // Initialize
+        log('ElevenLabs Integration Test initialized');
+        checkEnvironment();
+    </script>
+</body>
+</html>

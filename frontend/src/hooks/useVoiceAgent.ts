@@ -17,16 +17,33 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
   const uiState = useUIState();
   const voiceAgentRef = useRef<VoiceAgent | null>(null);
   const queueUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastNotificationTimeRef = useRef<number>(0);
+
+  // Create stable references for options to prevent infinite re-renders
+  const stableOptionsRef = useRef(options);
+  
+  // Update options ref when they change
+  useEffect(() => {
+    stableOptionsRef.current = options;
+  }, [options.agentId, options.apiKey, options.pendingImage, options.onImageSent]);
 
   // Create stable references to avoid infinite re-renders
   const stableVoiceState = useRef(voiceState);
   const stableMedicalState = useRef(medicalState);
   const stableUIState = useRef(uiState);
   
-  // Update refs when state changes
-  stableVoiceState.current = voiceState;
-  stableMedicalState.current = medicalState;
-  stableUIState.current = uiState;
+  // Update refs when state changes (wrapped in useEffect to prevent infinite loops)
+  useEffect(() => {
+    stableVoiceState.current = voiceState;
+  }, [voiceState]);
+  
+  useEffect(() => {
+    stableMedicalState.current = medicalState;
+  }, [medicalState]);
+  
+  useEffect(() => {
+    stableUIState.current = uiState;
+  }, [uiState]);
 
   // Update queue status periodically
   const updateQueueStatus = useCallback(() => {
@@ -76,8 +93,8 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
       stableVoiceState.current.updateConnectionStatus('connecting');
 
       const agent = createVoiceAgent({
-        agentId: options.agentId || defaultVoiceConfig.agentId || 'default-agent-id',
-        apiKey: options.apiKey || defaultVoiceConfig.apiKey,
+        agentId: stableOptionsRef.current.agentId || defaultVoiceConfig.agentId || 'default-agent-id',
+        apiKey: stableOptionsRef.current.apiKey || defaultVoiceConfig.apiKey,
         onConnect: () => {
           stableVoiceState.current.updateConnectionStatus('connected');
           startQueueMonitoring();
@@ -92,14 +109,20 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
         onError: (error: Error) => {
           console.error('Voice agent error:', error);
           stableVoiceState.current.updateConnectionStatus('disconnected');
-          stableUIState.current.addNotification({
-            id: `voice-error-${Date.now()}`,
-            type: 'error',
-            title: 'Voice Service Error',
-            message: error.message,
-            timestamp: new Date(),
-            autoClose: true
-          });
+          
+          // Throttle error notifications to prevent spam
+          const now = Date.now();
+          if (now - lastNotificationTimeRef.current > 5000) { // Only show error notification every 5 seconds
+            lastNotificationTimeRef.current = now;
+            stableUIState.current.addNotification({
+              id: `voice-error-${now}`,
+              type: 'error',
+              title: 'Voice Service Error',
+              message: error.message,
+              timestamp: new Date(),
+              autoClose: true
+            });
+          }
         },
         onMessage: async (message: string) => {
           try {
@@ -180,12 +203,12 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
             const agentResponse = await backendService.sendMessageToAgent(
               text, 
               userLocation, 
-              options.pendingImage || undefined
+              stableOptionsRef.current.pendingImage || undefined
             );
             
             // Clear the pending image after sending
-            if (options.pendingImage && options.onImageSent) {
-              options.onImageSent();
+            if (stableOptionsRef.current.pendingImage && stableOptionsRef.current.onImageSent) {
+              stableOptionsRef.current.onImageSent();
             }
             
             // Update medical state with response
@@ -239,14 +262,20 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
         },
         onError: (error: Error) => {
           console.error('Voice agent callback error:', error);
-          stableUIState.current.addNotification({
-            id: `voice-callback-error-${Date.now()}`,
-            type: 'error',
-            title: 'Voice Processing Error',
-            message: error.message,
-            timestamp: new Date(),
-            autoClose: true
-          });
+          
+          // Throttle callback error notifications
+          const now = Date.now();
+          if (now - lastNotificationTimeRef.current > 5000) {
+            lastNotificationTimeRef.current = now;
+            stableUIState.current.addNotification({
+              id: `voice-callback-error-${now}`,
+              type: 'error',
+              title: 'Voice Processing Error',
+              message: error.message,
+              timestamp: new Date(),
+              autoClose: true
+            });
+          }
         }
       });
 
@@ -270,7 +299,7 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
       
       throw error;
     }
-  }, [options.agentId, options.apiKey, options.pendingImage, options.onImageSent]);
+  }, []); // Remove options dependencies since we use stableOptionsRef
 
   // Activate voice agent
   const activate = useCallback(async () => {
@@ -306,8 +335,8 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
   }, [stopQueueMonitoring]);
 
   // Send text message through voice agent with priority support
-  const sendMessage = useCallback(async (text: string, priority: 'low' | 'normal' | 'high' = 'normal') => {
-    console.log('🎤 useVoiceAgent.sendMessage called with:', { text, priority });
+  const sendMessage = useCallback(async (text: string, priority: 'low' | 'normal' | 'high' = 'normal', imageFile?: File | null) => {
+    console.log('🎤 useVoiceAgent.sendMessage called with:', { text, priority, hasImage: !!imageFile });
     
     try {
       stableVoiceState.current.startProcessing();
@@ -333,29 +362,48 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
 
       console.log('🌍 User location:', userLocation);
 
+      // Use the provided imageFile or fallback to pendingImage
+      const imageToSend = imageFile || stableOptionsRef.current.pendingImage || undefined;
+      
       // Send message directly to backend with image if available
       console.log('📤 Calling backendService.sendMessageToAgent...');
       const agentResponse = await backendService.sendMessageToAgent(
         text, 
         userLocation, 
-        options.pendingImage || undefined
+        imageToSend
       );
       
       console.log('✅ Backend response received:', agentResponse);
       
       // Clear the pending image after sending
-      if (options.pendingImage && options.onImageSent) {
-        options.onImageSent();
+      if ((imageFile || stableOptionsRef.current.pendingImage) && stableOptionsRef.current.onImageSent) {
+        stableOptionsRef.current.onImageSent();
       }
       
       // Update medical state with response
       console.log('🏥 Processing medical response...');
       
       // Always set assessment since we have a response
+      const fullResponse = agentResponse.response || agentResponse.advice || 'No advice provided';
+      
+      // Use structured response if available, otherwise fall back to splitting
+      let briefSummary = fullResponse;
+      let detailedAdvice = fullResponse;
+      
+      if (agentResponse.brief_text && agentResponse.detailed_text) {
+        briefSummary = agentResponse.brief_text;
+        detailedAdvice = agentResponse.detailed_text;
+      } else {
+        // Fallback: Split response into brief summary and detailed advice
+        const responseLines = fullResponse.split('\n').filter(line => line.trim());
+        briefSummary = responseLines[0] || fullResponse;
+        detailedAdvice = responseLines.length > 1 ? responseLines.slice(1).join('\n') : fullResponse;
+      }
+      
       stableMedicalState.current.setAssessment({
         condition: agentResponse.condition || 'Medical consultation',
         urgencyLevel: agentResponse.urgencyLevel || agentResponse.confidence_level || 'low',
-        advice: agentResponse.response || agentResponse.advice || 'No advice provided',
+        advice: detailedAdvice, // Use detailed advice for MedicalCard
         confidence: agentResponse.confidence || 0.8,
         hospitalData: agentResponse.hospital_data || agentResponse.hospitals,
         requiresEmergencyServices: (agentResponse.urgencyLevel === 'high') || (agentResponse.confidence_level === 'high')
@@ -375,18 +423,22 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
         id: `response-${Date.now()}`,
         timestamp: new Date(),
         type: 'system_response',
-        content: agentResponse.response || agentResponse.advice || 'No response',
+        content: briefSummary, // Use brief summary for MessageBubble
         metadata: {
           confidence: agentResponse.confidence || 0.8
         }
       });
       
-      // Try to send through voice agent for TTS if available and ready
+      // 🔊 ALWAYS play TTS response (main feature)
+      console.log('🔊 Playing TTS response...');
+      await playTTSResponse(briefSummary);
+      
+      // Try to send through voice agent for additional TTS if available and ready
       if (voiceAgentRef.current && voiceAgentRef.current.isReady()) {
         try {
-          await voiceAgentRef.current.sendMessage(agentResponse.response, priority);
+          await voiceAgentRef.current.sendMessage(briefSummary, priority);
         } catch (voiceError) {
-          console.log('Voice TTS not available, continuing without voice:', voiceError);
+          console.log('ElevenLabs TTS not available, using browser TTS:', voiceError);
         }
       }
       
@@ -417,7 +469,273 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
         autoClose: true
       });
     }
-  }, [options.pendingImage, options.onImageSent]);
+  }, []); // Remove options dependencies since we use stableOptionsRef
+
+  // Detect language of text
+  const detectLanguage = useCallback((text: string): string => {
+    // Remove punctuation and convert to lowercase for analysis
+    const cleanText = text.replace(/[^\w\s]/g, '').toLowerCase();
+    
+    // Korean detection - look for Hangul characters
+    if (/[가-힣]/.test(text)) {
+      return 'ko';
+    }
+    
+    // Japanese detection - look for Hiragana, Katakana, or Kanji
+    if (/[ひらがなカタカナ一-龯]/.test(text)) {
+      return 'ja';
+    }
+    
+    // Spanish detection - look for Spanish-specific words and patterns
+    const spanishIndicators = [
+      'dolor', 'cabeza', 'estómago', 'fiebre', 'náuseas', 'mareo', 'sangre',
+      'herida', 'corte', 'quemadura', 'fractura', 'emergencia', 'hospital',
+      'médico', 'ayuda', 'duele', 'siento', 'tengo', 'estoy', 'me duele'
+    ];
+    
+    if (spanishIndicators.some(indicator => cleanText.includes(indicator))) {
+      return 'es';
+    }
+    
+    // Default to English
+    return 'en';
+  }, []);
+
+  // Play TTS response using ElevenLabs TTS API directly with language support
+  const playTTSResponse = useCallback(async (text: string): Promise<void> => {
+    // Detect the language of the response text
+    const language = detectLanguage(text);
+    console.log('🌍 Detected response language:', language);
+
+    // First try ElevenLabs TTS API directly for highest quality
+    try {
+      console.log('🔊 Attempting ElevenLabs TTS API...');
+      
+      const apiKey = stableOptionsRef.current.apiKey || import.meta.env.VITE_ELEVENLABS_API_KEY;
+      if (apiKey && apiKey !== 'your-api-key-here') {
+        // Select voice based on language
+        let voiceId = '21m00Tcm4TlvDq8ikWAM'; // Default English voice
+        let modelId = 'eleven_monolingual_v1';
+        
+        if (language === 'ko') {
+          // Use multilingual model for Korean
+          voiceId = '21m00Tcm4TlvDq8ikWAM'; // This voice supports multiple languages
+          modelId = 'eleven_multilingual_v2';
+        } else if (language === 'ja') {
+          // Use multilingual model for Japanese
+          voiceId = '21m00Tcm4TlvDq8ikWAM';
+          modelId = 'eleven_multilingual_v2';
+        } else if (language === 'es') {
+          // Use multilingual model for Spanish
+          voiceId = '21m00Tcm4TlvDq8ikWAM';
+          modelId = 'eleven_multilingual_v2';
+        }
+        
+        const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+          method: 'POST',
+          headers: {
+            'Accept': 'audio/mpeg',
+            'Content-Type': 'application/json',
+            'xi-api-key': apiKey
+          },
+          body: JSON.stringify({
+            text: text,
+            model_id: modelId,
+            voice_settings: {
+              stability: 0.5,
+              similarity_boost: 0.5,
+              style: 0.0,
+              use_speaker_boost: true
+            }
+          })
+        });
+
+        if (response.ok) {
+          const audioBlob = await response.blob();
+          const audioUrl = URL.createObjectURL(audioBlob);
+          const audio = new Audio(audioUrl);
+          
+          return new Promise((resolve, reject) => {
+            audio.onended = () => {
+              URL.revokeObjectURL(audioUrl);
+              console.log('🔊 ElevenLabs TTS playback completed');
+              resolve();
+            };
+            
+            audio.onerror = (error) => {
+              URL.revokeObjectURL(audioUrl);
+              console.error('🔊 ElevenLabs audio playback error:', error);
+              reject(error);
+            };
+            
+            audio.onloadstart = () => {
+              console.log('🔊 ElevenLabs TTS playback started');
+            };
+            
+            audio.play().catch(reject);
+          });
+        } else {
+          console.log('🔊 ElevenLabs API failed, status:', response.status);
+        }
+      }
+    } catch (elevenLabsError) {
+      console.log('🔊 ElevenLabs TTS API failed:', elevenLabsError);
+    }
+
+    // Fallback to browser TTS with language-specific voice selection
+    console.log('🔊 Using browser TTS as fallback...');
+    return new Promise((resolve, reject) => {
+      try {
+        // Check if Speech Synthesis is supported
+        if (!('speechSynthesis' in window)) {
+          console.warn('Speech Synthesis not supported in this browser');
+          resolve(); // Don't fail, just skip TTS
+          return;
+        }
+
+        // Cancel any ongoing speech
+        window.speechSynthesis.cancel();
+
+        // Wait a bit for voices to load if needed
+        const speakWithVoice = () => {
+          // Create speech utterance
+          const utterance = new SpeechSynthesisUtterance(text);
+          
+          // Configure voice settings for better quality
+          utterance.rate = 0.85; // Slower for better clarity
+          utterance.pitch = 1.0;
+          utterance.volume = 0.9;
+          
+          // Get available voices
+          const voices = window.speechSynthesis.getVoices();
+          console.log('🔊 Available voices:', voices.length);
+          
+          // Try to find the best quality voice for the detected language
+          let preferredVoice = null;
+          
+          // Language-specific voice selection
+          if (language === 'ko') {
+            // Korean voices
+            preferredVoice = voices.find(voice => 
+              voice.lang.startsWith('ko') && 
+              (voice.name.toLowerCase().includes('female') || voice.localService)
+            ) || voices.find(voice => voice.lang.startsWith('ko'));
+            utterance.lang = 'ko-KR';
+          } else if (language === 'ja') {
+            // Japanese voices
+            preferredVoice = voices.find(voice => 
+              voice.lang.startsWith('ja') && 
+              (voice.name.toLowerCase().includes('female') || voice.localService)
+            ) || voices.find(voice => voice.lang.startsWith('ja'));
+            utterance.lang = 'ja-JP';
+          } else if (language === 'es') {
+            // Spanish voices
+            preferredVoice = voices.find(voice => 
+              voice.lang.startsWith('es') && 
+              (voice.name.toLowerCase().includes('female') || voice.localService)
+            ) || voices.find(voice => voice.lang.startsWith('es'));
+            utterance.lang = 'es-ES';
+          } else {
+            // English voices (default)
+            utterance.lang = 'en-US';
+            
+            // Priority 1: High-quality English voices
+            preferredVoice = voices.find(voice => 
+              voice.lang.startsWith('en') && 
+              (voice.name.toLowerCase().includes('enhanced') ||
+               voice.name.toLowerCase().includes('premium') ||
+               voice.name.toLowerCase().includes('neural') ||
+               voice.name.toLowerCase().includes('natural'))
+            );
+            
+            // Priority 2: Female voices for medical assistant feel
+            if (!preferredVoice) {
+              preferredVoice = voices.find(voice => 
+                voice.lang.startsWith('en') &&
+                (voice.name.toLowerCase().includes('female') || 
+                 voice.name.toLowerCase().includes('samantha') ||
+                 voice.name.toLowerCase().includes('karen') ||
+                 voice.name.toLowerCase().includes('susan') ||
+                 voice.name.toLowerCase().includes('zira') ||
+                 voice.name.toLowerCase().includes('hazel'))
+              );
+            }
+            
+            // Priority 3: Any good English voice
+            if (!preferredVoice) {
+              preferredVoice = voices.find(voice => 
+                voice.lang.startsWith('en') && voice.localService
+              );
+            }
+            
+            // Priority 4: Any English voice
+            if (!preferredVoice) {
+              preferredVoice = voices.find(voice => voice.lang.startsWith('en'));
+            }
+          }
+          
+          // Use the best available voice
+          if (preferredVoice) {
+            utterance.voice = preferredVoice;
+            console.log('🔊 Using voice:', preferredVoice.name, '(' + preferredVoice.lang + ')');
+          } else {
+            console.log('🔊 Using default voice for language:', language);
+          }
+
+          // Set up event handlers
+          utterance.onend = () => {
+            console.log('🔊 TTS playback completed');
+            resolve();
+          };
+          
+          utterance.onerror = (event) => {
+            console.error('🔊 TTS error:', event.error);
+            reject(new Error(`TTS error: ${event.error}`));
+          };
+
+          utterance.onstart = () => {
+            console.log('🔊 TTS playback started');
+          };
+
+          // Start speaking
+          window.speechSynthesis.speak(utterance);
+          
+          // Fallback timeout in case onend doesn't fire
+          setTimeout(() => {
+            if (window.speechSynthesis.speaking) {
+              window.speechSynthesis.cancel();
+            }
+            resolve();
+          }, text.length * 120 + 8000); // More time for better quality
+        };
+
+        // Check if voices are loaded
+        const voices = window.speechSynthesis.getVoices();
+        if (voices.length > 0) {
+          speakWithVoice();
+        } else {
+          // Wait for voices to load
+          console.log('🔊 Waiting for voices to load...');
+          window.speechSynthesis.onvoiceschanged = () => {
+            window.speechSynthesis.onvoiceschanged = null; // Remove listener
+            speakWithVoice();
+          };
+          
+          // Fallback timeout if voices don't load
+          setTimeout(() => {
+            if (window.speechSynthesis.onvoiceschanged) {
+              window.speechSynthesis.onvoiceschanged = null;
+              speakWithVoice();
+            }
+          }, 2000);
+        }
+        
+      } catch (error) {
+        console.error('🔊 TTS initialization error:', error);
+        reject(error);
+      }
+    });
+  }, [detectLanguage]); // Remove options.apiKey since we use stableOptionsRef
 
   // Clear voice request queue
   const clearQueue = useCallback(() => {
@@ -445,6 +763,17 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
     }
   }, []);
 
+  // Language preference methods
+  const setLanguagePreference = useCallback((language: string) => {
+    if (voiceAgentRef.current) {
+      voiceAgentRef.current.setLanguagePreference(language);
+    }
+  }, []);
+
+  const getLanguagePreference = useCallback(() => {
+    return voiceAgentRef.current?.getLanguagePreference() || 'auto';
+  }, []);
+
   // Auto-connect on mount if enabled
   useEffect(() => {
     if (options.autoConnect) {
@@ -458,7 +787,7 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
         voiceAgentRef.current.disconnect().catch(console.error);
       }
     };
-  }, [options.autoConnect, initializeAgent, stopQueueMonitoring]);
+  }, [options.autoConnect]); // Remove initializeAgent and stopQueueMonitoring from dependencies
 
   return {
     // State
@@ -478,6 +807,10 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
     sendMessage,
     clearQueue,
     forceEndSession,
+    
+    // Language preferences
+    setLanguagePreference,
+    getLanguagePreference,
     
     // Agent instance (for advanced usage)
     agent: voiceAgentRef.current,

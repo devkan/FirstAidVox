@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>음성 인식 문제 해결 테스트</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+        #log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .solution {
+            background: #e8f5e8;
+            padding: 15px;
+            border-left: 4px solid #4caf50;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 음성 인식 문제 해결</h1>
+        <p>ElevenLabs 음성 인식이 빈 메시지(`...`)만 받는 문제를 해결하기 위한 테스트입니다.</p>
+
+        <div class="solution">
+            <h3>🔧 해결 방법들</h3>
+            <ol>
+                <li><strong>브라우저 마이크 권한 확인</strong> - 브라우저 주소창 옆 마이크 아이콘 클릭하여 권한 허용</li>
+                <li><strong>마이크 장치 확인</strong> - 다른 앱에서 마이크가 정상 작동하는지 확인</li>
+                <li><strong>브라우저 새로고침</strong> - 페이지를 새로고침하여 권한 재설정</li>
+                <li><strong>HTTPS 연결 확인</strong> - 음성 인식은 HTTPS에서만 작동</li>
+                <li><strong>브라우저 호환성</strong> - Chrome, Edge 브라우저 사용 권장</li>
+            </ol>
+        </div>
+
+        <div class="test-section">
+            <h3>1. 종합 진단 테스트</h3>
+            <div id="diagnosis-status"></div>
+            <button onclick="runComprehensiveDiagnosis()">종합 진단 실행</button>
+        </div>
+
+        <div class="test-section">
+            <h3>2. ElevenLabs 음성 인식 테스트</h3>
+            <div id="elevenlabs-status"></div>
+            <button onclick="testElevenLabsVoice()" id="elevenlabs-btn">ElevenLabs 음성 테스트</button>
+            <button onclick="disconnectElevenLabs()" id="disconnect-btn" disabled>연결 해제</button>
+            <p><strong>마지막 메시지:</strong> <span id="lastMessage">없음</span></p>
+        </div>
+
+        <div class="test-section">
+            <h3>3. 브라우저 설정 가이드</h3>
+            <div id="browser-guide">
+                <h4>Chrome/Edge 브라우저 설정:</h4>
+                <ol>
+                    <li>주소창 왼쪽의 🔒 또는 🎤 아이콘 클릭</li>
+                    <li>"마이크" 권한을 "허용"으로 설정</li>
+                    <li>페이지 새로고침</li>
+                </ol>
+                
+                <h4>Windows 마이크 설정:</h4>
+                <ol>
+                    <li>설정 > 개인 정보 보호 > 마이크</li>
+                    <li>"앱이 마이크에 액세스하도록 허용" 켜기</li>
+                    <li>"데스크톱 앱이 마이크에 액세스하도록 허용" 켜기</li>
+                </ol>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h3>디버그 로그</h3>
+            <div id="log"></div>
+            <button onclick="clearLog()">로그 지우기</button>
+        </div>
+    </div>
+
+    <script type="module">
+        let conversation = null;
+
+        // 로깅 함수
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logElement = document.getElementById('log');
+            const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : type === 'warning' ? '⚠️' : 'ℹ️';
+            logElement.textContent += `[${timestamp}] ${prefix} ${message}\n`;
+            logElement.scrollTop = logElement.scrollHeight;
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        // 종합 진단 테스트
+        window.runComprehensiveDiagnosis = async function() {
+            const statusElement = document.getElementById('diagnosis-status');
+            statusElement.innerHTML = '<div class="info">🔄 종합 진단 실행 중...</div>';
+            
+            let issues = [];
+            let solutions = [];
+
+            try {
+                log('=== 종합 진단 시작 ===');
+                
+                // 1. HTTPS 확인
+                if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+                    issues.push('HTTPS 연결이 아님');
+                    solutions.push('HTTPS로 접속하거나 localhost에서 테스트하세요');
+                    log('⚠️ HTTPS 연결이 아닙니다', 'warning');
+                } else {
+                    log('✅ HTTPS 연결 확인됨', 'success');
+                }
+
+                // 2. 브라우저 지원 확인
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    issues.push('브라우저가 미디어 API를 지원하지 않음');
+                    solutions.push('Chrome, Edge, Firefox 최신 버전을 사용하세요');
+                    log('❌ 미디어 API 지원되지 않음', 'error');
+                } else {
+                    log('✅ 미디어 API 지원됨', 'success');
+                }
+
+                // 3. 마이크 권한 테스트
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        } 
+                    });
+                    
+                    const tracks = stream.getAudioTracks();
+                    if (tracks.length > 0) {
+                        const track = tracks[0];
+                        log(`✅ 마이크 접근 성공: ${track.label}`, 'success');
+                        
+                        // 마이크 설정 확인
+                        const settings = track.getSettings();
+                        log(`마이크 설정: 샘플레이트=${settings.sampleRate}Hz, 채널=${settings.channelCount}`, 'info');
+                    }
+                    
+                    stream.getTracks().forEach(track => track.stop());
+                } catch (micError) {
+                    issues.push(`마이크 권한 오류: ${micError.name}`);
+                    if (micError.name === 'NotAllowedError') {
+                        solutions.push('브라우저에서 마이크 권한을 허용해주세요');
+                    } else if (micError.name === 'NotFoundError') {
+                        solutions.push('마이크가 연결되어 있는지 확인해주세요');
+                    }
+                    log(`❌ 마이크 권한 오류: ${micError.message}`, 'error');
+                }
+
+                // 4. Web Speech API 확인
+                if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                    issues.push('Web Speech API 지원되지 않음');
+                    solutions.push('Chrome 또는 Edge 브라우저를 사용하세요');
+                    log('❌ Web Speech API 지원되지 않음', 'error');
+                } else {
+                    log('✅ Web Speech API 지원됨', 'success');
+                }
+
+                // 5. ElevenLabs 환경변수 확인
+                const agentId = import.meta.env.VITE_ELEVENLABS_AGENT_ID;
+                const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
+                
+                if (!agentId) {
+                    issues.push('ElevenLabs Agent ID 없음');
+                    solutions.push('환경변수 VITE_ELEVENLABS_AGENT_ID를 설정하세요');
+                    log('❌ ElevenLabs Agent ID 없음', 'error');
+                } else {
+                    log('✅ ElevenLabs Agent ID 확인됨', 'success');
+                }
+
+                if (!apiKey) {
+                    issues.push('ElevenLabs API Key 없음');
+                    solutions.push('환경변수 VITE_ELEVENLABS_API_KEY를 설정하세요');
+                    log('❌ ElevenLabs API Key 없음', 'error');
+                } else {
+                    log('✅ ElevenLabs API Key 확인됨', 'success');
+                }
+
+                // 결과 표시
+                if (issues.length === 0) {
+                    statusElement.innerHTML = '<div class="success">✅ 모든 진단 통과! 음성 인식이 정상 작동해야 합니다.</div>';
+                    log('✅ 모든 진단 통과!', 'success');
+                } else {
+                    let issueHtml = '<div class="error">❌ 발견된 문제들:</div><ul>';
+                    issues.forEach((issue, index) => {
+                        issueHtml += `<li><strong>${issue}</strong><br>해결방법: ${solutions[index]}</li>`;
+                    });
+                    issueHtml += '</ul>';
+                    statusElement.innerHTML = issueHtml;
+                    log(`❌ ${issues.length}개 문제 발견됨`, 'error');
+                }
+
+            } catch (error) {
+                log(`❌ 진단 중 오류: ${error.message}`, 'error');
+                statusElement.innerHTML = `<div class="error">❌ 진단 중 오류: ${error.message}</div>`;
+            }
+        };
+
+        // ElevenLabs 음성 테스트
+        window.testElevenLabsVoice = async function() {
+            const statusElement = document.getElementById('elevenlabs-status');
+            const connectBtn = document.getElementById('elevenlabs-btn');
+            const disconnectBtn = document.getElementById('disconnect-btn');
+            const lastMessageElement = document.getElementById('lastMessage');
+            
+            try {
+                connectBtn.disabled = true;
+                statusElement.innerHTML = '<div class="info">🔄 ElevenLabs 음성 테스트 시작...</div>';
+                log('ElevenLabs 음성 테스트 시작');
+                
+                const agentId = import.meta.env.VITE_ELEVENLABS_AGENT_ID;
+                if (!agentId) {
+                    throw new Error('ElevenLabs Agent ID가 설정되지 않았습니다');
+                }
+
+                // 마이크 권한 먼저 확인
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        sampleRate: 44100
+                    } 
+                });
+                
+                const tracks = stream.getAudioTracks();
+                if (tracks.length > 0) {
+                    log(`마이크 준비됨: ${tracks[0].label}`, 'success');
+                }
+                stream.getTracks().forEach(track => track.stop());
+
+                // ElevenLabs 연결
+                const { Conversation } = await import('@elevenlabs/client');
+                
+                conversation = await Conversation.startSession({
+                    agentId: agentId,
+                    connectionType: 'webrtc',
+                    onConnect: () => {
+                        log('✅ ElevenLabs 연결 성공', 'success');
+                        statusElement.innerHTML = '<div class="success">✅ ElevenLabs 연결됨 - 말씀해보세요!</div>';
+                        disconnectBtn.disabled = false;
+                    },
+                    onDisconnect: () => {
+                        log('ElevenLabs 연결 해제됨', 'warning');
+                        statusElement.innerHTML = '<div class="warning">⚠️ ElevenLabs 연결 해제됨</div>';
+                        connectBtn.disabled = false;
+                        disconnectBtn.disabled = true;
+                    },
+                    onError: (error) => {
+                        log(`❌ ElevenLabs 오류: ${error.message || error}`, 'error');
+                        statusElement.innerHTML = `<div class="error">❌ ElevenLabs 오류: ${error.message || error}</div>`;
+                        connectBtn.disabled = false;
+                        disconnectBtn.disabled = true;
+                    },
+                    onMessage: (message) => {
+                        log(`ElevenLabs 메시지: ${JSON.stringify(message)}`, 'info');
+                        
+                        const messageText = message.message || message.text || message.content || '';
+                        lastMessageElement.textContent = messageText;
+                        
+                        // 빈 메시지 감지
+                        if (message.source === 'user') {
+                            if (messageText === '...' || !messageText.trim()) {
+                                log('⚠️ 빈 사용자 메시지 감지됨!', 'warning');
+                                log('🔧 해결방법: 1) 마이크 권한 재확인 2) 브라우저 새로고침 3) 더 크게 말하기', 'warning');
+                                statusElement.innerHTML += '<div class="warning">⚠️ 빈 메시지 감지 - 마이크를 더 가까이 하고 크게 말해보세요</div>';
+                            } else {
+                                log(`✅ 사용자 음성 인식 성공: "${messageText}"`, 'success');
+                                statusElement.innerHTML += '<div class="success">✅ 음성 인식 성공!</div>';
+                            }
+                        }
+                    },
+                    onModeChange: (mode) => {
+                        const modeStr = typeof mode === 'object' ? mode.mode || JSON.stringify(mode) : mode;
+                        log(`모드 변경: ${modeStr}`, 'info');
+                        
+                        if (modeStr === 'listening') {
+                            statusElement.innerHTML = '<div class="info">🎤 듣는 중... 말씀해주세요</div>';
+                        } else if (modeStr === 'speaking') {
+                            statusElement.innerHTML = '<div class="info">🔊 응답 중...</div>';
+                        }
+                    }
+                });
+                
+                log(`✅ ElevenLabs 대화 세션 생성: ${conversation.getId()}`, 'success');
+                
+            } catch (error) {
+                log(`❌ ElevenLabs 테스트 오류: ${error.message}`, 'error');
+                statusElement.innerHTML = `<div class="error">❌ 테스트 오류: ${error.message}</div>`;
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+            }
+        };
+
+        // ElevenLabs 연결 해제
+        window.disconnectElevenLabs = async function() {
+            if (conversation) {
+                try {
+                    await conversation.endSession();
+                    log('✅ ElevenLabs 세션 종료됨', 'success');
+                } catch (error) {
+                    log(`❌ 세션 종료 오류: ${error.message}`, 'error');
+                }
+                conversation = null;
+            }
+        };
+
+        // 로그 지우기
+        window.clearLog = function() {
+            document.getElementById('log').textContent = '';
+        };
+
+        // 초기화
+        log('🎤 음성 인식 문제 해결 테스트 시작');
+        log('먼저 "종합 진단 실행" 버튼을 클릭하여 문제를 확인하세요');
+    </script>
+</body>
+</html>

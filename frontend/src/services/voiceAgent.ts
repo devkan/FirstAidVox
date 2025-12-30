@@ -1,7 +1,14 @@
 // Voice Agent Service for ElevenLabs integration
-// Note: Using simplified implementation due to ElevenLabs React API changes
-
 import { errorHandler, ErrorType, ErrorSeverity } from './errorHandler';
+
+// ElevenLabs Conversational AI types
+interface ElevenLabsConversation {
+  startSession: (config: any) => Promise<void>;
+  endSession: () => Promise<void>;
+  sendMessage: (text: string) => Promise<void>;
+  on: (event: string, callback: Function) => void;
+  off: (event: string, callback: Function) => void;
+}
 
 export interface VoiceAgentConfig {
   agentId: string;
@@ -43,7 +50,7 @@ export interface VoiceSession {
 }
 
 export class VoiceAgent {
-  private conversation: any = null; // Simplified without ElevenLabs dependency
+  private conversation: ElevenLabsConversation | any = null;
   private callbacks: Partial<VoiceAgentCallbacks> = {};
   private config: VoiceAgentConfig;
   private isInitialized = false;
@@ -53,6 +60,8 @@ export class VoiceAgent {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 3;
   private reconnectDelay = 1000;
+  private isUsingElevenLabs = false;
+  private lastErrorTime: number | null = null;
 
   // Voice request queuing and session management
   private requestQueue: VoiceRequest[] = [];
@@ -68,7 +77,7 @@ export class VoiceAgent {
   }
 
   /**
-   * Initialize connection (simplified without ElevenLabs)
+   * Initialize connection (with ElevenLabs integration)
    * Validates: Requirements 6.1
    */
   async initializeConnection(): Promise<void> {
@@ -80,30 +89,26 @@ export class VoiceAgent {
     try {
       this.updateConnectionStatus('connecting');
       
-      // Check if API key is available
-      if (!this.config.apiKey && !import.meta.env.VITE_ELEVENLABS_API_KEY) {
-        // For now, simulate connection without ElevenLabs
-        console.warn('ElevenLabs API key not found. Voice features will be limited.');
-        
-        // Simulate successful connection for demo purposes
-        setTimeout(() => {
-          this.updateConnectionStatus('connected');
-          this.isInitialized = true;
-          this.reconnectAttempts = 0;
-          this.config.onConnect?.();
-        }, 1000);
-        
-        return;
+      // Check if ElevenLabs Agent ID is available
+      const agentId = this.config.agentId || import.meta.env.VITE_ELEVENLABS_AGENT_ID;
+      
+      if (!agentId) {
+        console.warn('ElevenLabs Agent ID not found. Using Web Speech API as fallback.');
+        return this.initializeWebSpeechFallback();
       }
       
-      // TODO: Implement actual ElevenLabs connection when API is available
-      // For now, simulate connection
-      setTimeout(() => {
-        this.updateConnectionStatus('connected');
-        this.isInitialized = true;
-        this.reconnectAttempts = 0;
-        this.config.onConnect?.();
-      }, 1000);
+      console.log('🎤 Initializing ElevenLabs Conversational AI...');
+      console.log('📋 Agent ID:', agentId);
+      
+      try {
+        // Try to initialize ElevenLabs Conversational AI
+        await this.initializeElevenLabsConversation(agentId);
+        this.isUsingElevenLabs = true;
+        console.log('✅ ElevenLabs Conversational AI initialized successfully');
+      } catch (elevenLabsError) {
+        console.warn('❌ ElevenLabs initialization failed, falling back to Web Speech API:', elevenLabsError);
+        return this.initializeWebSpeechFallback();
+      }
       
     } catch (error) {
       this.updateConnectionStatus('disconnected');
@@ -114,23 +119,162 @@ export class VoiceAgent {
   }
 
   /**
-   * Start listening for voice input
-   * Validates: Requirements 1.1
+   * Initialize ElevenLabs Conversational AI
    */
-  startListening(): void {
-    if (!this.isInitialized || !this.conversation) {
-      const error = new Error('Voice agent not initialized. Call initializeConnection() first.');
+  private async initializeElevenLabsConversation(agentId: string): Promise<void> {
+    try {
+      // Request microphone permission first with enhanced settings
+      try {
+        console.log('🎤 Requesting enhanced microphone access...');
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 44100,
+            channelCount: 1
+          } 
+        });
+        
+        // 마이크 정보 로깅
+        const audioTracks = stream.getAudioTracks();
+        if (audioTracks.length > 0) {
+          const track = audioTracks[0];
+          const settings = track.getSettings();
+          console.log('🎤 Microphone info:', track.label);
+          console.log('🎤 Audio settings:', settings);
+        }
+        
+        console.log('🎤 Enhanced microphone access granted');
+        
+        // 스트림 정리 (ElevenLabs가 자체적으로 마이크에 접근할 것임)
+        stream.getTracks().forEach(track => track.stop());
+      } catch (micError) {
+        console.warn('🎤 Enhanced microphone access denied or not available:', micError);
+        console.warn('🎤 Trying basic microphone access...');
+        
+        // 기본 마이크 접근 시도
+        try {
+          const basicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          console.log('🎤 Basic microphone access granted');
+          basicStream.getTracks().forEach(track => track.stop());
+        } catch (basicError) {
+          console.error('🎤 All microphone access attempts failed:', basicError);
+          throw new Error('Microphone access is required for voice functionality');
+        }
+      }
+      
+      // Import ElevenLabs Conversation class
+      const { Conversation } = await import('@elevenlabs/client');
+      
+      console.log('🎤 Starting ElevenLabs conversation session...');
+      
+      // Create conversation session using the new API with enhanced settings
+      const conversation = await Conversation.startSession({
+        agentId: agentId,
+        connectionType: 'webrtc', // WebRTC for better audio quality
+        // Enhanced audio settings for better recognition
+        audioSettings: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 44100,
+          channelCount: 1
+        },
+        onConnect: () => {
+          console.log('🎤 ElevenLabs conversation connected');
+          this.config.onConnect?.();
+        },
+        onDisconnect: () => {
+          console.log('🎤 ElevenLabs conversation disconnected');
+          this.config.onDisconnect?.();
+        },
+        onError: (error: any) => {
+          console.error('🎤 ElevenLabs conversation error:', error);
+          this.handleVoiceError(new Error(error.message || 'ElevenLabs conversation error'));
+        },
+        onMessage: (message: any) => {
+          console.log('🎤 ElevenLabs message received:', message);
+          
+          // 빈 메시지 감지 및 경고
+          if (message.source === 'user' && (message.message === '...' || !message.message || message.message.trim() === '')) {
+            console.warn('⚠️ Empty user message detected - possible microphone issue');
+            console.warn('🎤 Please check microphone settings and permissions');
+            // 빈 메시지는 처리하지 않음
+            return;
+          }
+          
+          // 메시지 내용 추출
+          const messageContent = message.message || message.text || message.content || message;
+          this.config.onMessage?.(messageContent);
+        },
+        onModeChange: (mode: any) => {
+          console.log('🎤 ElevenLabs mode change:', mode);
+          const mappedMode = this.mapElevenLabsMode(mode);
+          this.config.onModeChange?.(mappedMode);
+        },
+        onVolumeChange: (volume: any) => {
+          console.log('🎤 ElevenLabs volume change:', volume);
+          this.config.onVolumeChange?.(volume);
+        }
+      });
+      
+      console.log('🎤 ElevenLabs conversation session created:', conversation.getId());
+      
+      this.conversation = conversation;
+      this.updateConnectionStatus('connected');
+      this.isInitialized = true;
+      this.reconnectAttempts = 0;
+      
+    } catch (error) {
+      console.error('Failed to initialize ElevenLabs conversation:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Initialize Web Speech API as fallback
+   */
+  private async initializeWebSpeechFallback(): Promise<void> {
+    // Check if Web Speech API is available
+    if (typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+      console.log('✅ Web Speech API available - voice recognition will work');
+      this.updateConnectionStatus('connected');
+      this.isInitialized = true;
+      this.reconnectAttempts = 0;
+      this.config.onConnect?.();
+      return;
+    } else {
+      console.warn('❌ Web Speech API not supported in this browser');
+      this.updateConnectionStatus('disconnected');
+      const error = new Error('Voice recognition not supported in this browser');
       this.handleVoiceError(error);
       throw error;
     }
+  }
 
+  /**
+   * Start listening for voice input using ElevenLabs or Web Speech API
+   * Validates: Requirements 1.1
+   */
+  startListening(): void {
     try {
-      // ElevenLabs conversation automatically handles microphone activation
-      // The conversation is already listening when connected
-      if (this.connectionStatus === 'connected') {
-        // Conversation is ready to receive audio input
-        console.log('Voice agent is now listening');
+      if (this.isUsingElevenLabs && this.conversation) {
+        // ElevenLabs conversation automatically handles microphone activation
+        console.log('🎤 ElevenLabs conversation is listening');
+        this.updateConnectionStatus('connected');
+        return;
       }
+
+      // Use Web Speech API as fallback
+      if (typeof window !== 'undefined' && 'webkitSpeechRecognition' in window) {
+        this.startWebSpeechRecognition();
+        return;
+      }
+
+      const error = new Error('No voice recognition method available');
+      this.handleVoiceError(error);
+      throw error;
     } catch (error) {
       const errorObj = error instanceof Error ? error : new Error(String(error));
       this.handleVoiceError(errorObj);
@@ -139,15 +283,150 @@ export class VoiceAgent {
   }
 
   /**
-   * Stop listening for voice input
+   * Start Web Speech Recognition with language detection and selection
    */
-  stopListening(): void {
-    if (!this.isInitialized || !this.conversation) {
+  private startWebSpeechRecognition(): void {
+    if (typeof window === 'undefined' || !('webkitSpeechRecognition' in window)) {
+      console.warn('Web Speech API not supported in this browser');
       return;
     }
 
     try {
-      // ElevenLabs handles this automatically based on conversation flow
+      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+      const recognition = new SpeechRecognition();
+      
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      
+      // Get language preference from localStorage or browser settings
+      let speechLang = localStorage.getItem('voiceLanguage') || 'auto';
+      
+      if (speechLang === 'auto') {
+        // Auto-detect from browser settings
+        const userLanguage = navigator.language || navigator.languages?.[0] || 'en-US';
+        console.log('🌍 Browser language:', userLanguage);
+        
+        // Map browser language to speech recognition language
+        if (userLanguage.startsWith('ko')) {
+          speechLang = 'ko-KR';
+        } else if (userLanguage.startsWith('ja')) {
+          speechLang = 'ja-JP';
+        } else if (userLanguage.startsWith('es')) {
+          speechLang = 'es-ES';
+        } else if (userLanguage.startsWith('en')) {
+          speechLang = 'en-US';
+        } else {
+          speechLang = 'en-US'; // Default fallback
+        }
+      }
+      
+      recognition.lang = speechLang;
+      console.log('🎤 Speech recognition language set to:', speechLang);
+      
+      recognition.onstart = () => {
+        console.log('🎤 Web Speech Recognition started with language:', speechLang);
+        this.updateConnectionStatus('connected');
+        this.config.onConnect?.();
+      };
+      
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        const confidence = event.results[0][0].confidence;
+        console.log('🎤 Speech recognized:', transcript, 'Confidence:', confidence);
+        
+        // If confidence is low and not using English, suggest language adjustment
+        if (confidence < 0.7 && speechLang !== 'en-US') {
+          console.log('🎤 Low confidence, might need language adjustment');
+        }
+        
+        // Trigger transcription callback
+        this.callbacks.onTranscription?.(transcript);
+      };
+      
+      recognition.onerror = (event: any) => {
+        console.error('🎤 Speech recognition error:', event.error);
+        
+        // Handle 'no-speech' error gracefully (user didn't speak)
+        if (event.error === 'no-speech') {
+          console.log('🎤 No speech detected, stopping listening');
+          this.updateConnectionStatus('disconnected');
+          this.config.onDisconnect?.();
+          return; // Don't treat this as a real error
+        }
+        
+        // If language error, try with English as fallback
+        if (event.error === 'language-not-supported' && speechLang !== 'en-US') {
+          console.log('🎤 Language not supported, retrying with English...');
+          recognition.lang = 'en-US';
+          setTimeout(() => {
+            try {
+              recognition.start();
+            } catch (retryError) {
+              console.error('🎤 Retry failed:', retryError);
+              this.updateConnectionStatus('disconnected');
+              const error = new Error(`Speech recognition retry failed: ${retryError}`);
+              this.handleVoiceError(error);
+            }
+          }, 100);
+          return;
+        }
+        
+        // Handle other errors
+        this.updateConnectionStatus('disconnected');
+        const error = new Error(`Speech recognition error: ${event.error}`);
+        this.handleVoiceError(error);
+      };
+      
+      recognition.onend = () => {
+        console.log('🎤 Speech recognition ended');
+        this.updateConnectionStatus('disconnected');
+        this.config.onDisconnect?.();
+      };
+      
+      recognition.start();
+      this.conversation = recognition; // Store recognition instance
+      
+    } catch (error) {
+      console.error('Failed to start Web Speech Recognition:', error);
+      const errorObj = error instanceof Error ? error : new Error(String(error));
+      this.handleVoiceError(errorObj);
+    }
+  }
+
+  /**
+   * Set language preference for speech recognition
+   */
+  setLanguagePreference(language: string): void {
+    localStorage.setItem('voiceLanguage', language);
+    console.log('🌍 Voice language preference set to:', language);
+    
+    // If currently listening, restart with new language
+    if (this.conversation && typeof this.conversation.stop === 'function') {
+      this.conversation.stop();
+      setTimeout(() => {
+        this.startListening();
+      }, 500);
+    }
+  }
+
+  /**
+   * Get current language preference
+   */
+  getLanguagePreference(): string {
+    return localStorage.getItem('voiceLanguage') || 'auto';
+  }
+
+  /**
+   * Stop listening for voice input
+   */
+  stopListening(): void {
+    try {
+      // Stop Web Speech Recognition if active
+      if (this.conversation && typeof this.conversation.stop === 'function') {
+        this.conversation.stop();
+        this.conversation = null;
+      }
+      
       console.log('Voice agent stopped listening');
     } catch (error) {
       const errorObj = error instanceof Error ? error : new Error(String(error));
@@ -166,26 +445,39 @@ export class VoiceAgent {
       throw error;
     }
 
-    // Create voice request
-    const request: VoiceRequest = {
-      id: `req-${++this.requestIdCounter}-${Date.now()}`,
-      text: text.trim(),
-      timestamp: new Date(),
-      priority,
-      retryCount: 0,
-      maxRetries: 2
-    };
+    try {
+      if (this.isUsingElevenLabs && this.conversation) {
+        // Send message through ElevenLabs conversation using the new API
+        console.log('🎤 Sending message to ElevenLabs:', text);
+        await this.conversation.sendUserMessage(text.trim());
+        return;
+      }
 
-    // Add to queue with priority handling
-    this.enqueueRequest(request);
+      // Fallback to queue-based processing for Web Speech API
+      const request: VoiceRequest = {
+        id: `req-${++this.requestIdCounter}-${Date.now()}`,
+        text: text.trim(),
+        timestamp: new Date(),
+        priority,
+        retryCount: 0,
+        maxRetries: 2
+      };
 
-    // Start session if not active
-    if (!this.currentSession) {
-      this.startSession();
+      // Add to queue with priority handling
+      this.enqueueRequest(request);
+
+      // Start session if not active
+      if (!this.currentSession) {
+        this.startSession();
+      }
+
+      // Process queue
+      await this.processRequestQueue();
+    } catch (error) {
+      const errorObj = error instanceof Error ? error : new Error(String(error));
+      this.handleVoiceError(errorObj);
+      throw errorObj;
     }
-
-    // Process queue
-    await this.processRequestQueue();
   }
 
   /**
@@ -411,8 +703,13 @@ export class VoiceAgent {
 
     if (this.conversation) {
       try {
-        // Simulate ending session (without ElevenLabs for now)
-        console.log('Ending voice session...');
+        // End ElevenLabs conversation session using the new API
+        if (this.isUsingElevenLabs && typeof this.conversation.endSession === 'function') {
+          console.log('Ending ElevenLabs conversation session...');
+          await this.conversation.endSession();
+        } else {
+          console.log('Ending voice session...');
+        }
       } catch (error) {
         console.warn('Error ending conversation session:', error);
       }
@@ -463,9 +760,17 @@ export class VoiceAgent {
    * Validates: Requirements 6.3
    */
   private handleVoiceError(error: Error): void {
+    // Prevent infinite error loops by limiting error callback frequency
+    const now = Date.now();
+    if (this.lastErrorTime && (now - this.lastErrorTime) < 1000) {
+      console.warn('Throttling voice error callbacks to prevent infinite loops');
+      return;
+    }
+    this.lastErrorTime = now;
+
     const result = errorHandler.handleVoiceServiceError(error, 'VoiceAgent', 'operation');
     
-    // Trigger error callbacks
+    // Trigger error callbacks (throttled)
     this.config.onError?.(error);
     this.callbacks.onError?.(error);
     
@@ -539,8 +844,19 @@ export class VoiceAgent {
     this.callbacks.onConnectionStatusChange?.(status);
   }
 
-  private mapElevenLabsStatus(status: string): 'connected' | 'connecting' | 'disconnected' {
-    switch (status.toLowerCase()) {
+  private mapElevenLabsStatus(status: any): 'connected' | 'connecting' | 'disconnected' {
+    // Handle both string and object inputs from ElevenLabs API
+    let statusString: string;
+    if (typeof status === 'string') {
+      statusString = status;
+    } else if (status && typeof status === 'object' && status.status) {
+      statusString = status.status;
+    } else {
+      console.warn('Unknown status format:', status);
+      return 'disconnected';
+    }
+    
+    switch (statusString.toLowerCase()) {
       case 'connected':
       case 'ready':
         return 'connected';
@@ -552,8 +868,35 @@ export class VoiceAgent {
     }
   }
 
-  private mapElevenLabsMode(mode: string): 'listening' | 'speaking' | 'thinking' {
-    switch (mode.toLowerCase()) {
+  private mapElevenLabsMode(mode: any): 'listening' | 'speaking' | 'thinking' {
+    // Handle both string and object inputs from ElevenLabs API
+    let modeString: string;
+    if (typeof mode === 'string') {
+      modeString = mode;
+    } else if (mode && typeof mode === 'object') {
+      // Handle various object formats from ElevenLabs API
+      if (mode.mode) {
+        modeString = mode.mode;
+      } else if (mode.status) {
+        modeString = mode.status;
+      } else if (mode.state) {
+        modeString = mode.state;
+      } else {
+        // If it's an object but no recognizable property, convert to string
+        modeString = String(mode);
+      }
+    } else {
+      console.warn('Unknown mode format:', mode);
+      return 'listening';
+    }
+    
+    // Ensure modeString is actually a string before calling toLowerCase
+    if (typeof modeString !== 'string') {
+      console.warn('Mode string is not a string:', modeString);
+      return 'listening';
+    }
+    
+    switch (modeString.toLowerCase()) {
       case 'listening':
         return 'listening';
       case 'speaking':

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Send Button Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        medical: {
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="p-8 bg-gray-50">
+    <div class="max-w-2xl mx-auto">
+        <h1 class="text-2xl font-bold mb-6">Send Button Test</h1>
+        
+        <!-- Test 1: Basic Button -->
+        <div class="mb-8 p-4 bg-white rounded-lg shadow">
+            <h2 class="text-lg font-semibold mb-4">Test 1: Basic Send Button</h2>
+            <div class="flex items-center space-x-3">
+                <input 
+                    type="text" 
+                    id="input1"
+                    placeholder="Type here..."
+                    class="flex-1 px-3 py-2 border rounded-lg"
+                    oninput="updateButton('input1', 'btn1')"
+                >
+                <button
+                    id="btn1"
+                    onclick="sendTest('input1', 'result1')"
+                    disabled
+                    class="w-12 h-12 rounded-full flex items-center justify-center transition-all bg-gray-200 text-gray-400 cursor-not-allowed border-2 border-gray-300"
+                >
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                </button>
+            </div>
+            <div id="result1" class="mt-2 text-sm text-gray-600"></div>
+        </div>
+
+        <!-- Test 2: Styled Like App -->
+        <div class="mb-8 p-4 bg-white rounded-lg shadow">
+            <h2 class="text-lg font-semibold mb-4">Test 2: App-Style Button</h2>
+            <div class="flex items-end space-x-3 p-4 border rounded-2xl bg-gradient-to-br from-blue-50 to-white">
+                <textarea 
+                    id="input2"
+                    placeholder="Describe your symptoms..."
+                    class="flex-1 px-3 py-2 bg-white border border-gray-300 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    rows="1"
+                    style="min-height: 40px; max-height: 120px;"
+                    oninput="updateButton('input2', 'btn2')"
+                ></textarea>
+                <button
+                    id="btn2"
+                    onclick="sendTest('input2', 'result2')"
+                    disabled
+                    class="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center transition-all border-2 bg-gray-200 text-gray-400 cursor-not-allowed opacity-60 border-gray-300"
+                    title="Type a message to send"
+                >
+                    <div class="relative">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                        </svg>
+                        <div id="indicator2" class="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border border-white hidden"></div>
+                    </div>
+                </button>
+            </div>
+            <div id="result2" class="mt-2 text-sm text-gray-600"></div>
+        </div>
+
+        <!-- Test 3: Always Enabled -->
+        <div class="mb-8 p-4 bg-white rounded-lg shadow">
+            <h2 class="text-lg font-semibold mb-4">Test 3: Always Enabled Button</h2>
+            <div class="flex items-center space-x-3">
+                <input 
+                    type="text" 
+                    id="input3"
+                    placeholder="This button is always enabled"
+                    class="flex-1 px-3 py-2 border rounded-lg"
+                >
+                <button
+                    onclick="sendTest('input3', 'result3')"
+                    class="w-12 h-12 rounded-full flex items-center justify-center transition-all bg-blue-500 hover:bg-blue-600 text-white shadow-lg border-2 border-blue-600"
+                >
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                </button>
+            </div>
+            <div id="result3" class="mt-2 text-sm text-gray-600"></div>
+        </div>
+    </div>
+
+    <script>
+        function updateButton(inputId, buttonId) {
+            const input = document.getElementById(inputId);
+            const button = document.getElementById(buttonId);
+            const indicator = document.getElementById('indicator' + inputId.slice(-1));
+            const canSend = input.value.trim().length > 0;
+            
+            console.log(`${inputId}: "${input.value}" -> canSend: ${canSend}`);
+            
+            if (canSend) {
+                button.disabled = false;
+                button.className = button.className.replace(/bg-gray-\d+|text-gray-\d+|cursor-not-allowed|opacity-\d+|border-gray-\d+/g, '');
+                button.className += ' bg-blue-500 hover:bg-blue-600 text-white shadow-lg border-blue-600';
+                button.title = 'Send message';
+                if (indicator) indicator.classList.remove('hidden');
+            } else {
+                button.disabled = true;
+                button.className = button.className.replace(/bg-blue-\d+|hover:bg-blue-\d+|text-white|shadow-lg|border-blue-\d+/g, '');
+                button.className += ' bg-gray-200 text-gray-400 cursor-not-allowed opacity-60 border-gray-300';
+                button.title = 'Type a message to send';
+                if (indicator) indicator.classList.add('hidden');
+            }
+        }
+        
+        function sendTest(inputId, resultId) {
+            const input = document.getElementById(inputId);
+            const result = document.getElementById(resultId);
+            const message = input.value.trim();
+            
+            if (message) {
+                result.innerHTML = `<span class="text-green-600">✅ Sent: "${message}"</span>`;
+                input.value = '';
+                updateButton(inputId, inputId.replace('input', 'btn'));
+            } else {
+                result.innerHTML = `<span class="text-red-600">❌ No message to send</span>`;
+            }
+        }
+        
+        // Add Enter key support
+        document.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                const input = e.target;
+                if (input.id.startsWith('input')) {
+                    e.preventDefault();
+                    const buttonId = input.id.replace('input', 'btn');
+                    const button = document.getElementById(buttonId);
+                    if (!button.disabled) {
+                        const resultId = input.id.replace('input', 'result');
+                        sendTest(input.id, resultId);
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

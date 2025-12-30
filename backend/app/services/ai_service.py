@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import time
+import re
 from typing import List, Optional, Dict, Any
 import vertexai
 from vertexai.generative_models import GenerativeModel, Part
@@ -19,6 +20,41 @@ from app.services.search_service import VertexSearchClient
 
 
 logger = logging.getLogger(__name__)
+
+
+def detect_language(text: str) -> str:
+    """
+    Detect the language of the input text.
+    
+    Args:
+        text: Input text to analyze
+        
+    Returns:
+        Language code ('ko' for Korean, 'en' for English, 'ja' for Japanese, 'es' for Spanish)
+    """
+    # Remove punctuation and convert to lowercase for analysis
+    clean_text = re.sub(r'[^\w\s]', '', text.lower())
+    
+    # Korean detection - look for Hangul characters
+    if re.search(r'[가-힣]', text):
+        return 'ko'
+    
+    # Japanese detection - look for Hiragana, Katakana, or Kanji
+    if re.search(r'[ひらがなカタカナ一-龯]', text):
+        return 'ja'
+    
+    # Spanish detection - look for Spanish-specific words and patterns
+    spanish_indicators = [
+        'dolor', 'cabeza', 'estómago', 'fiebre', 'náuseas', 'mareo', 'sangre',
+        'herida', 'corte', 'quemadura', 'fractura', 'emergencia', 'hospital',
+        'médico', 'ayuda', 'duele', 'siento', 'tengo', 'estoy', 'me duele'
+    ]
+    
+    if any(indicator in clean_text for indicator in spanish_indicators):
+        return 'es'
+    
+    # Default to English
+    return 'en'
 
 
 class GeminiClient:
@@ -38,19 +74,37 @@ class GeminiClient:
         # Initialize search client for RAG
         self.search_client = VertexSearchClient()
         
-        # Medical triage system prompt with RAG context
+        # Medical triage system prompt with RAG context and multilingual support
         self._system_prompt = """You are a medical triage AI assistant for emergency situations. 
         Your role is to provide immediate first-aid guidance based on user descriptions, images, and relevant medical knowledge.
         
+        IMPORTANT LANGUAGE INSTRUCTION: 
+        - ALWAYS respond in the SAME LANGUAGE as the user's input
+        - If the user writes in Korean (한국어), respond entirely in Korean
+        - If the user writes in English, respond entirely in English
+        - If the user writes in Japanese (日本語), respond entirely in Japanese
+        - If the user writes in Spanish (Español), respond entirely in Spanish
+        - Maintain the same language throughout your entire response
+        
+        Please structure your response in two parts:
+        1. BRIEF SUMMARY: A short, immediate response (1-2 sentences) that directly addresses the user's concern
+        2. DETAILED ADVICE: Comprehensive first-aid steps and recommendations
+        
+        Format your response like this:
+        BRIEF: [Short immediate response in user's language]
+        
+        DETAILED: [Comprehensive advice with steps in user's language]
+        
         Guidelines:
         - Use the provided medical context to inform your advice
-        - Provide clear, actionable first-aid steps
+        - Provide clear, actionable first-aid steps in the detailed section
         - Always recommend seeking professional medical help for serious conditions
         - If uncertain about advice, recommend immediate medical attention
         - Use the search_hospitals function when users need to find nearby medical facilities
-        - Be concise but thorough in emergency situations
+        - Be concise in the brief section but thorough in the detailed section
         - Never provide definitive diagnoses - focus on immediate care and triage
         - Reference the medical context when relevant, but make it accessible to non-medical users
+        - REMEMBER: Always respond in the same language as the user's input
         
         Available tools:
         - search_hospitals: Use when users need to find nearby hospitals or pharmacies
@@ -200,6 +254,10 @@ class GeminiClient:
             # Increment service call count
             metrics_collector.increment_service_call("vertex_ai")
             
+            # Detect user's language
+            user_language = detect_language(text)
+            logger.info(f"Detected user language: {user_language}")
+            
             # Step 1: Search for relevant medical documents using RAG
             logger.info("Searching for relevant medical documents...")
             search_results = await self.search_client.search_medical_documents(
@@ -211,8 +269,29 @@ class GeminiClient:
             # Format search results as context
             medical_context = self.search_client.format_search_results_for_context(search_results)
             
-            # Step 2: Prepare the enhanced prompt with medical context
-            enhanced_prompt = f"""{self._system_prompt}
+            # Step 2: Prepare the enhanced prompt with medical context and language instruction
+            language_instruction = ""
+            if user_language == 'ko':
+                language_instruction = "\n\nIMPORTANT: The user is writing in Korean (한국어). You MUST respond entirely in Korean. Use natural Korean medical terminology and expressions."
+            elif user_language == 'ja':
+                language_instruction = "\n\nIMPORTANT: The user is writing in Japanese (日本語). You MUST respond entirely in Japanese. Use natural Japanese medical terminology and expressions."
+            elif user_language == 'es':
+                language_instruction = "\n\nIMPORTANT: The user is writing in Spanish (Español). You MUST respond entirely in Spanish. Use natural Spanish medical terminology and expressions."
+            else:
+                language_instruction = "\n\nIMPORTANT: The user is writing in English. You MUST respond entirely in English."
+            
+            if image_data:
+                enhanced_prompt = f"""{self._system_prompt}{language_instruction}
+
+{medical_context}
+
+IMPORTANT: The user has provided an image along with their text description. Please analyze the image carefully for any visible injuries, symptoms, or medical conditions. Describe what you see in the image and provide appropriate first-aid advice based on both the image and the text description.
+
+Please use the above medical information to inform your response, but make it accessible to non-medical users.
+
+User query: {text}"""
+            else:
+                enhanced_prompt = f"""{self._system_prompt}{language_instruction}
 
 {medical_context}
 
@@ -225,16 +304,57 @@ User query: {text}"""
             
             # Add image if provided
             if image_data:
+                # Detect image MIME type from the image data
+                import imghdr
+                image_type = imghdr.what(None, h=image_data)
+                
+                if image_type == 'jpeg':
+                    mime_type = "image/jpeg"
+                elif image_type == 'png':
+                    mime_type = "image/png"
+                elif image_type == 'webp':
+                    mime_type = "image/webp"
+                else:
+                    # Default to JPEG if we can't detect
+                    mime_type = "image/jpeg"
+                
+                logger.info(f"Adding image to request: {len(image_data)} bytes, MIME type: {mime_type}")
+                
                 image_part = Part.from_data(
-                    mime_type="image/jpeg",  # Assume JPEG for now
+                    mime_type=mime_type,
                     data=image_data
                 )
                 content_parts.append(image_part)
             
             # Generate response using Gemini
+            logger.info(f"Generating response with Gemini model. Has image: {image_data is not None}")
+            if image_data:
+                logger.info(f"Image data size: {len(image_data)} bytes")
+            
             response = self._model.generate_content(content_parts)
             
+            logger.info(f"Gemini response received. Response text length: {len(response.text) if response.text else 0}")
+            logger.debug(f"Gemini response text: {response.text[:200]}..." if response.text and len(response.text) > 200 else response.text)
+            
             response_text = response.text if response.text else "I apologize, but I couldn't generate a response. Please try again or seek immediate medical attention if this is an emergency."
+            
+            # Parse structured response if available
+            brief_response = response_text
+            detailed_advice = response_text
+            
+            if "BRIEF:" in response_text and "DETAILED:" in response_text:
+                try:
+                    parts = response_text.split("DETAILED:")
+                    brief_part = parts[0].replace("BRIEF:", "").strip()
+                    detailed_part = parts[1].strip()
+                    
+                    if brief_part and detailed_part:
+                        brief_response = brief_part
+                        detailed_advice = detailed_part
+                        logger.info("Successfully parsed structured response")
+                except Exception as e:
+                    logger.warning(f"Failed to parse structured response: {e}")
+                    # Fall back to using the full response for both
             
             # Check if we should call hospital search based on keywords
             function_calls = []
@@ -261,6 +381,8 @@ User query: {text}"""
             
             return AIResponse(
                 text=response_text,
+                brief_text=brief_response,
+                detailed_text=detailed_advice,
                 function_calls=function_calls
             )
             
