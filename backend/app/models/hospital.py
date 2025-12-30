@@ -33,6 +33,22 @@ class HospitalResult(BaseModel):
         le=5,
         description="Google Maps rating (0-5 stars)"
     )
+    place_type: str = Field(
+        default="hospital",
+        description="Type of place: 'hospital' or 'pharmacy'"
+    )
+    latitude: Optional[float] = Field(
+        None,
+        ge=-90,
+        le=90,
+        description="Latitude coordinate"
+    )
+    longitude: Optional[float] = Field(
+        None,
+        ge=-180,
+        le=180,
+        description="Longitude coordinate"
+    )
     
     class Config:
         json_schema_extra = {
@@ -41,6 +57,9 @@ class HospitalResult(BaseModel):
                 "address": "1001 Potrero Ave, San Francisco, CA 94110",
                 "distance_km": 2.5,
                 "place_id": "ChIJd8BlQ2BZwokRAFUEcm_qrcA",
-                "rating": 4.2
+                "rating": 4.2,
+                "place_type": "hospital",
+                "latitude": 37.7554,
+                "longitude": -122.4058
             }
         }

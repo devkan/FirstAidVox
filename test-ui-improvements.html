@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UI 개선사항 테스트</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-4">
+    <div class="max-w-2xl mx-auto">
+        <h1 class="text-2xl font-bold mb-6">UI 개선사항 테스트</h1>
+        
+        <!-- 기존 형태 (BRIEF/DETAILED 텍스트 포함) -->
+        <div class="bg-white rounded-lg p-4 mb-6 shadow">
+            <h2 class="text-lg font-semibold mb-3">기존 형태 (개선 전)</h2>
+            <div class="bg-blue-100 rounded-lg p-4">
+                <div class="text-base leading-relaxed">
+                    <p><strong>BRIEF:</strong> **진단**: 감기 또는 상기도 감염으로 보입니다<br>
+                    **즉시 관리**: 충분한 휴식, 수분 섭취, 해열제 복용<br>
+                    **병원**: 증상이 3일 이상 지속되거나 악화되면 가까운 내과나 이비인후과 방문<br>
+                    **약국**: 해열제(타이레놀, 부루펜), 목캔디, 기침약 구입 가능<br>
+                    **응급상황**: 고열(39도 이상), 호흡곤란, 심한 두통이 있으면 즉시 응급실 방문 또는 119 연락<br>
+                    **상담이 완료되었습니다** - 빠른 회복을 위해 충분히 쉬세요.</p>
+                    
+                    <p><strong>DETAILED:</strong> 말씀해 주신 증상들로 보아 일반적인 감기나 상기도 감염 가능성이 높습니다. 자가 관리로 호전될 가능성이 높으나, 증상이 악화되거나 지속되면 의료진의 진료를 받으시기 바랍니다.</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 개선된 형태 (BRIEF/DETAILED 구분, 색상 적용) -->
+        <div class="bg-white rounded-lg p-4 mb-6 shadow">
+            <h2 class="text-lg font-semibold mb-3">개선된 형태 (개선 후)</h2>
+            <div class="bg-blue-100 rounded-lg p-4">
+                <!-- 메인 응답 (BRIEF 부분) -->
+                <div class="text-base leading-relaxed mb-4">
+                    <p><strong>진단</strong>: 감기 또는 상기도 감염으로 보입니다<br>
+                    <strong>즉시 관리</strong>: 충분한 휴식, 수분 섭취, 해열제 복용<br>
+                    <strong>병원</strong>: 증상이 3일 이상 지속되거나 악화되면 가까운 내과나 이비인후과 방문<br>
+                    <strong>약국</strong>: 해열제(타이레놀, 부루펜), 목캔디, 기침약 구입 가능<br>
+                    <strong>응급상황</strong>: 고열(39도 이상), 호흡곤란, 심한 두통이 있으면 즉시 응급실 방문 또는 119 연락<br>
+                    <strong>상담이 완료되었습니다</strong> - 빠른 회복을 위해 충분히 쉬세요.</p>
+                </div>
+                
+                <!-- 참고사항 (DETAILED 부분) -->
+                <div class="border-t border-gray-200 pt-3 mt-4">
+                    <div class="flex items-center space-x-2 mb-2">
+                        <svg class="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                        </svg>
+                        <span class="text-sm font-medium text-blue-600">참고사항</span>
+                    </div>
+                    <div class="text-sm leading-relaxed text-gray-600 bg-blue-50 p-3 rounded-lg">
+                        말씀해 주신 증상들로 보아 일반적인 감기나 상기도 감염 가능성이 높습니다. 자가 관리로 호전될 가능성이 높으나, 증상이 악화되거나 지속되면 의료진의 진료를 받으시기 바랍니다.
+                    </div>
+                </div>
+                
+                <!-- 병원 정보 -->
+                <div class="border-t border-gray-200 pt-3 mt-4">
+                    <div class="flex items-center space-x-2 mb-3">
+                        <svg class="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M19 8h-2v3h-3v2h3v3h2v-3h3v-2h-3V8zM4 6H2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-2H4V6zm0-2h14c1.1 0 2 .9 2 2H2c0-1.1.9-2 2-2z"/>
+                        </svg>
+                        <span class="text-sm font-medium text-red-600">근처 병원</span>
+                    </div>
+                    <div class="space-y-2">
+                        <div class="bg-red-50 p-3 rounded-lg">
+                            <div class="font-medium text-red-800">서울대학교병원</div>
+                            <div class="text-sm text-red-600">서울특별시 종로구 대학로 101</div>
+                            <div class="text-sm text-red-600">📞 02-2072-2114</div>
+                            <div class="text-xs text-red-500">거리: 2.3km</div>
+                        </div>
+                        <div class="bg-red-50 p-3 rounded-lg">
+                            <div class="font-medium text-red-800">삼성서울병원</div>
+                            <div class="text-sm text-red-600">서울특별시 강남구 일원로 81</div>
+                            <div class="text-sm text-red-600">📞 02-3410-2114</div>
+                            <div class="text-xs text-red-500">거리: 5.7km</div>
+                        </div>
+                        <div class="bg-red-50 p-3 rounded-lg">
+                            <div class="font-medium text-red-800">연세세브란스병원</div>
+                            <div class="text-sm text-red-600">서울특별시 서대문구 연세로 50-1</div>
+                            <div class="text-sm text-red-600">📞 02-2228-5800</div>
+                            <div class="text-xs text-red-500">거리: 3.1km</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="bg-green-100 border border-green-400 rounded-lg p-4">
+            <h3 class="text-green-800 font-semibold mb-2">✅ 개선사항 요약</h3>
+            <ul class="text-green-700 text-sm space-y-1">
+                <li>• "BRIEF:" 및 "DETAILED:" 텍스트 제거</li>
+                <li>• 참고사항 섹션을 별도 색상(파란색)으로 구분</li>
+                <li>• 병원 정보를 빨간색으로 강조하여 표시</li>
+                <li>• 각 섹션에 아이콘 추가로 시각적 구분 개선</li>
+                <li>• 병원 정보에 거리, 전화번호 등 상세 정보 포함</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

@@ -87,3 +87,69 @@ class ChatResponse(BaseModel):
                 "timestamp": "2024-01-15T10:30:00Z"
             }
         }
+
+
+class ConversationalResponse(BaseModel):
+    """Response model for conversational medical triage with step-by-step assessment."""
+    
+    response: str = Field(
+        ...,
+        min_length=1,
+        description="AI-generated conversational response"
+    )
+    brief_text: str = Field(
+        ...,
+        min_length=1,
+        description="Brief summary of the response"
+    )
+    detailed_text: str = Field(
+        ...,
+        min_length=1,
+        description="Detailed explanation and advice"
+    )
+    condition: str = Field(
+        ...,
+        description="Assessed medical condition or status"
+    )
+    urgency_level: str = Field(
+        ...,
+        description="Urgency level: emergency, high, moderate, low"
+    )
+    confidence: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="AI confidence level (0.0 to 1.0)"
+    )
+    assessment_stage: str = Field(
+        ...,
+        description="Current assessment stage: initial, exploration, narrowing, final"
+    )
+    hospital_data: Optional[List[HospitalResult]] = Field(
+        None,
+        description="Nearby hospitals if location-based search was performed"
+    )
+    timestamp: datetime = Field(
+        default_factory=datetime.utcnow,
+        description="Response generation timestamp"
+    )
+    
+    @field_serializer('timestamp')
+    def serialize_timestamp(self, dt: datetime) -> str:
+        """Serialize datetime to ISO format string."""
+        return dt.isoformat() + 'Z'
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "response": "I understand you're experiencing a headache. To help assess this properly, when did the headache start? Was it sudden or gradual?",
+                "brief_text": "Need more information about headache onset",
+                "detailed_text": "To provide the best assessment, I need to understand when your headache started and how it developed. This helps determine if it's a tension headache, migraine, or something that needs immediate attention.",
+                "condition": "Headache - Initial Assessment",
+                "urgency_level": "moderate",
+                "confidence": 0.7,
+                "assessment_stage": "exploration",
+                "hospital_data": None,
+                "timestamp": "2024-01-15T10:30:00Z"
+            }
+        }

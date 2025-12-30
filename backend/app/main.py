@@ -3,19 +3,20 @@ FastAPI application for FirstAidVox Backend.
 Implements multimodal medical triage endpoints with middleware for CORS, logging, and error handling.
 """
 
+import asyncio
 import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request, status
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request, status, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
-from app.models.chat import ChatRequest, ChatResponse
+from app.models.chat import ChatRequest, ChatResponse, ConversationalResponse
 from app.models.location import Location
 from app.models.error import ErrorResponse
 from app.handlers.multimodal import MultimodalHandler
@@ -46,6 +47,11 @@ async def lifespan(app: FastAPI):
             ai_client=service_manager.gemini_client,
             location_client=service_manager.maps_client
         )
+        
+        # Initialize conversational AI client
+        from app.services.ai_service_conversational import ConversationalGeminiClient
+        app.state.conversational_ai_client = ConversationalGeminiClient()
+        await app.state.conversational_ai_client.initialize()
         
         logger.info("FirstAidVox Backend startup completed successfully")
         
@@ -413,6 +419,167 @@ def create_app() -> FastAPI:
                 detail={
                     "code": "PROCESSING_ERROR",
                     "message": "Failed to process chat request",
+                    "details": {"error": str(e)}
+                }
+            )
+
+    # Conversational chat endpoint with history support
+    @app.post("/chat/conversational", response_model=ConversationalResponse)
+    async def conversational_chat_endpoint(
+        request: Request,
+        chat_request: dict = Body(..., description="Conversational chat request with history")
+    ):
+        """
+        Process conversational medical triage request with conversation history.
+        
+        Supports step-by-step diagnosis through systematic questioning.
+        Maintains conversation context for better assessment.
+        """
+        try:
+            # Get logging utilities
+            request_logger = get_request_logger()
+            request_id = getattr(request.state, 'request_id', 'unknown')
+            
+            # Extract request data
+            text = chat_request.get("message", "")
+            conversation_history = chat_request.get("conversation_history", [])
+            user_location = chat_request.get("user_location")
+            image_data = chat_request.get("image_data")  # Base64 encoded image
+            
+            if not text or not text.strip():
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "code": "MISSING_MESSAGE",
+                        "message": "Message text is required",
+                        "details": {}
+                    }
+                )
+            
+            # Log input summary
+            request_logger.log_input_summary(
+                request_id=request_id,
+                input_type="conversational_medical_query",
+                input_size=len(text),
+                has_image=bool(image_data)
+            )
+            
+            # Build location object if provided
+            location = None
+            if user_location and user_location.get("latitude") and user_location.get("longitude"):
+                try:
+                    location = Location(
+                        latitude=user_location["latitude"], 
+                        longitude=user_location["longitude"]
+                    )
+                except ValidationError as e:
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "code": "INVALID_LOCATION",
+                            "message": "Invalid location coordinates",
+                            "details": {"validation_errors": e.errors()}
+                        }
+                    )
+            
+            # Process image data if provided
+            processed_image_data = None
+            if image_data:
+                try:
+                    import base64
+                    processed_image_data = base64.b64decode(image_data)
+                except Exception as e:
+                    logger.warning(f"Failed to decode image data: {e}")
+            
+            # Get conversational AI service
+            conversational_client = app.state.conversational_ai_client
+            
+            # Generate conversational response with fallback to mock
+            try:
+                ai_response = await asyncio.wait_for(
+                    conversational_client.generate_conversational_response(
+                        text=text,
+                        conversation_history=conversation_history,
+                        image_data=processed_image_data,
+                        location=location.dict() if location else None
+                    ),
+                    timeout=10.0  # 10 second timeout
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Gemini API timed out, using mock response")
+                ai_response = conversational_client._generate_mock_response(text, conversation_history)
+            except Exception as e:
+                logger.warning(f"Gemini API failed: {e}, using mock response")
+                ai_response = conversational_client._generate_mock_response(text, conversation_history)
+            
+            # Process hospital search ONLY for final diagnosis stage
+            hospital_data = []
+            assessment_stage = ai_response.metadata.get("assessment_stage", "exploration") if ai_response.metadata else "exploration"
+            
+            # Log the assessment stage for debugging
+            logger.info(f"🔍 Assessment stage from AI: {assessment_stage}, conversation_history length: {len(conversation_history)}")
+            
+            # Only search for hospitals when it's a FINAL diagnosis
+            should_search_hospitals = (
+                location and 
+                assessment_stage == "final"
+            )
+            
+            logger.info(f"🏥 Should search hospitals: {should_search_hospitals}")
+            
+            if should_search_hospitals:
+                try:
+                    # Get maps service from service manager
+                    maps_service = app.state.service_manager.maps_client
+                    hospitals = await maps_service.search_hospitals(
+                        latitude=location.latitude,
+                        longitude=location.longitude,
+                        radius_km=10
+                    )
+                    hospital_data = [hospital.dict() for hospital in hospitals]
+                    logger.info(f"Found {len(hospital_data)} hospitals/pharmacies near user location (final diagnosis)")
+                except Exception as e:
+                    logger.error(f"Hospital search failed: {e}")
+            
+            # Also check function calls (backup method) - only for final stage
+            if ai_response.function_calls and not hospital_data and assessment_stage == "final":
+                for func_call in ai_response.function_calls:
+                    if func_call.name == "search_hospitals" and location:
+                        try:
+                            # Get maps service from service manager
+                            maps_service = app.state.service_manager.maps_client
+                            hospitals = await maps_service.search_hospitals(
+                                latitude=location.latitude,
+                                longitude=location.longitude,
+                                radius_km=func_call.parameters.get("radius_km", 10)
+                            )
+                            hospital_data = [hospital.dict() for hospital in hospitals]
+                        except Exception as e:
+                            logger.error(f"Hospital search failed: {e}")
+            
+            # Build response
+            response = ConversationalResponse(
+                response=ai_response.text,
+                brief_text=ai_response.brief_text,
+                detailed_text=ai_response.detailed_text,
+                condition="Conversational Assessment",
+                urgency_level="moderate",  # Will be determined in final assessment
+                confidence=0.8,
+                assessment_stage=ai_response.metadata.get("assessment_stage", "exploration") if ai_response.metadata else "exploration",
+                hospital_data=hospital_data
+            )
+            
+            return response
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Conversational chat endpoint error: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "code": "CONVERSATIONAL_PROCESSING_ERROR",
+                    "message": "Failed to process conversational chat request",
                     "details": {"error": str(e)}
                 }
             )

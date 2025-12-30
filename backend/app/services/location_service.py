@@ -187,12 +187,9 @@ class GoogleMapsClient:
                 type='pharmacy'
             )
             
-            # Combine and process results
-            all_places = hospital_results.get('results', []) + pharmacy_results.get('results', [])
-            
-            for place in all_places:
+            # Process hospital results
+            for place in hospital_results.get('results', []):
                 try:
-                    # Extract place details
                     place_location = place.get('geometry', {}).get('location', {})
                     place_lat = place_location.get('lat')
                     place_lng = place_location.get('lng')
@@ -200,24 +197,56 @@ class GoogleMapsClient:
                     if place_lat is None or place_lng is None:
                         continue
                     
-                    # Calculate distance
                     distance_km = self._calculate_distance(
                         latitude, longitude, place_lat, place_lng
                     )
                     
-                    # Create hospital result
                     hospital_result = HospitalResult(
                         name=place.get('name', 'Unknown'),
                         address=place.get('vicinity', 'Address not available'),
                         distance_km=round(distance_km, 2),
                         place_id=place.get('place_id', ''),
-                        rating=place.get('rating')
+                        rating=place.get('rating'),
+                        place_type='hospital',
+                        latitude=place_lat,
+                        longitude=place_lng
                     )
                     
                     results.append(hospital_result)
                     
                 except Exception as e:
-                    logger.warning(f"Failed to process place result: {e}")
+                    logger.warning(f"Failed to process hospital result: {e}")
+                    continue
+            
+            # Process pharmacy results
+            for place in pharmacy_results.get('results', []):
+                try:
+                    place_location = place.get('geometry', {}).get('location', {})
+                    place_lat = place_location.get('lat')
+                    place_lng = place_location.get('lng')
+                    
+                    if place_lat is None or place_lng is None:
+                        continue
+                    
+                    distance_km = self._calculate_distance(
+                        latitude, longitude, place_lat, place_lng
+                    )
+                    
+                    pharmacy_result = HospitalResult(
+                        name=place.get('name', 'Unknown'),
+                        address=place.get('vicinity', 'Address not available'),
+                        distance_km=round(distance_km, 2),
+                        place_id=place.get('place_id', ''),
+                        rating=place.get('rating'),
+                        place_type='pharmacy',
+                        latitude=place_lat,
+                        longitude=place_lng
+                    )
+                    
+                    results.append(pharmacy_result)
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to process pharmacy result: {e}")
                     continue
             
             # Sort by distance and limit results

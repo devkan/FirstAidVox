@@ -49,6 +49,10 @@ class AIResponse(BaseModel):
         default_factory=list,
         description="List of function calls requested by the AI model"
     )
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Additional metadata about the response"
+    )
     
     class Config:
         json_schema_extra = {

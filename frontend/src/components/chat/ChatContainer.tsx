@@ -4,8 +4,10 @@ import { MedicalCard } from './MedicalCard';
 import { ChatInput } from './ChatInput';
 import { TypingIndicator } from './TypingIndicator';
 import { EmergencyButton } from './EmergencyButton';
+import { ConversationProgress } from './ConversationProgress';
 import { useMedicalState } from '../../hooks/useAppState';
 import { useVoiceAgent } from '../../hooks/useVoiceAgent';
+import { conversationalService } from '../../services/conversationalService';
 import type { ChatMessage, ChatContainerProps } from './types';
 
 export const ChatContainer = React.memo(function ChatContainer({ className = '' }: ChatContainerProps) {
@@ -14,6 +16,7 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [pendingImage, setPendingImage] = useState<Blob | null>(null);
+  const [conversationStarted, setConversationStarted] = useState(false);
 
   const voiceAgent = useVoiceAgent({
     autoConnect: false,
@@ -21,36 +24,107 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
     onImageSent: () => setPendingImage(null)
   });
 
-  // Convert conversation history to chat messages
+  // Initialize conversation on first load
   useEffect(() => {
-    const chatMessages: ChatMessage[] = medicalState.conversationHistory.map((entry, index) => ({
-      id: entry.id || `msg-${index}`,
-      content: entry.content,
-      type: entry.type === 'system_response' ? 'text' : 'text',
-      timestamp: entry.timestamp,
-      isUser: entry.type === 'user_voice',
-      metadata: entry.metadata
-    }));
-
-    // Add medical assessment as special message if available
-    if (medicalState.currentAssessment) {
-      const medicalMessage: ChatMessage = {
-        id: `medical-assessment`, // Use static ID to prevent re-renders
-        content: medicalState.currentAssessment.advice,
-        type: 'medical',
+    if (!conversationStarted) {
+      conversationalService.startNewConversation();
+      setConversationStarted(true);
+      
+      // Add welcome message
+      const welcomeMessage: ChatMessage = {
+        id: 'welcome-msg',
+        content: "Hello! I'm your medical triage assistant. I'll help assess your symptoms through a series of questions. What's your main concern today?",
+        type: 'text',
         timestamp: new Date(),
         isUser: false,
         metadata: {
-          medicalData: medicalState.currentAssessment,
-          urgency: medicalState.currentAssessment.urgencyLevel,
-          confidence: medicalState.currentAssessment.confidence
+          isWelcome: true,
+          assessment_stage: 'initial'
         }
       };
-      chatMessages.push(medicalMessage);
+      setMessages([welcomeMessage]);
+    }
+  }, [conversationStarted]);
+
+  // Convert conversation history to chat messages
+  // NOTE: This effect only handles initial load and medical assessment changes
+  // Real-time message updates happen in handleSendMessage to preserve hospital data
+  useEffect(() => {
+    const conversation = conversationalService.getCurrentConversation();
+    if (!conversation) return;
+
+    // Skip if we already have messages with hospital data (they're managed by handleSendMessage)
+    // Only run on initial load (messages.length === 0 or just welcome message)
+    const hasOnlyWelcome = messages.length === 1 && messages[0]?.id === 'welcome-msg';
+    const hasHospitalData = messages.some(msg => msg.metadata?.hospitalData?.length > 0);
+    
+    // Don't overwrite messages that have hospital data
+    if (hasHospitalData) {
+      console.log('📋 Skipping message sync - hospital data exists');
+      return;
+    }
+    
+    const shouldSync = messages.length === 0 || hasOnlyWelcome;
+    
+    if (!shouldSync && !medicalState.currentAssessment) {
+      return;
+    }
+
+    const chatMessages: ChatMessage[] = conversation.messages.map((msg) => ({
+      id: msg.id,
+      content: msg.content,
+      type: 'text',
+      timestamp: msg.timestamp,
+      isUser: msg.role === 'user',
+      metadata: {
+        ...msg.metadata,
+        assessment_stage: msg.metadata?.assessment_stage,
+        conversation_stage: conversation.currentStage,
+        // Preserve hospital data from message metadata
+        hospitalData: msg.metadata?.hospitalData
+      }
+    }));
+
+    // Add welcome message if no messages yet
+    if (chatMessages.length === 0) {
+      const welcomeMessage: ChatMessage = {
+        id: 'welcome-msg',
+        content: "Hello! I'm your medical triage assistant. I'll help assess your symptoms through a series of questions. What's your main concern today?",
+        type: 'text',
+        timestamp: new Date(),
+        isUser: false,
+        metadata: {
+          isWelcome: true,
+          assessment_stage: 'initial'
+        }
+      };
+      chatMessages.unshift(welcomeMessage);
+    }
+
+    // Add medical assessment as special message if available and conversation is in final stage
+    if (medicalState.currentAssessment && conversation.currentStage === 'final') {
+      // Check if medical assessment message already exists
+      const hasMedicalMessage = chatMessages.some(msg => msg.type === 'medical');
+      if (!hasMedicalMessage) {
+        const medicalMessage: ChatMessage = {
+          id: `medical-assessment-${Date.now()}`,
+          content: medicalState.currentAssessment.advice,
+          type: 'medical',
+          timestamp: new Date(),
+          isUser: false,
+          metadata: {
+            medicalData: medicalState.currentAssessment,
+            urgency: medicalState.currentAssessment.urgencyLevel,
+            confidence: medicalState.currentAssessment.confidence,
+            assessment_stage: 'final'
+          }
+        };
+        chatMessages.push(medicalMessage);
+      }
     }
 
     setMessages(chatMessages);
-  }, [medicalState.conversationHistory, medicalState.currentAssessment]);
+  }, [medicalState.currentAssessment]); // Only trigger on medical assessment changes
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
@@ -64,7 +138,7 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
     scrollToBottom();
   }, [messages]);
 
-  // Handle message sending
+  // Handle message sending with conversational approach
   const handleSendMessage = async (message: string, attachments?: File[]) => {
     if (!message.trim() && !attachments?.length) return;
 
@@ -74,22 +148,107 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
       // Get the image file if provided
       const imageFile = attachments?.length ? attachments[0] : null;
       
-      // Handle image attachment
-      if (imageFile) {
-        setPendingImage(imageFile);
+      // Get user location if available
+      let userLocation;
+      try {
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            timeout: 5000,
+            enableHighAccuracy: false
+          });
+        });
+        userLocation = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        };
+      } catch (error) {
+        console.log('Location not available:', error);
       }
 
-      // Send message through voice agent with image
-      await voiceAgent.sendMessage(message.trim(), 'normal', imageFile);
+      // Send message through conversational service
+      const response = await conversationalService.sendMessage(
+        message.trim(),
+        userLocation,
+        imageFile || undefined
+      );
+
+      console.log('📋 Conversational response received:', {
+        stage: response.assessment_stage,
+        urgency: response.urgency_level,
+        confidence: response.confidence,
+        hasHospitals: !!response.hospital_data?.length
+      });
+
+      // Update medical state if this is a final assessment
+      if (response.assessment_stage === 'final' || response.urgency_level !== 'moderate') {
+        medicalState.setAssessment({
+          condition: response.condition,
+          urgencyLevel: response.urgency_level as any,
+          advice: response.detailed_text,
+          confidence: response.confidence,
+          hospitalData: response.hospital_data,
+          requiresEmergencyServices: response.urgency_level === 'emergency'
+        });
+      }
+
+      // Store hospital data for this response to persist it
+      const currentHospitalData = response.hospital_data;
+
+      // FIRST: Update messages immediately (before TTS) so text appears first
+      const updatedConversation = conversationalService.getCurrentConversation();
+      if (updatedConversation) {
+        const chatMessages: ChatMessage[] = updatedConversation.messages.map((msg, index) => {
+          // Check if this is the latest assistant message
+          const isLatestAssistantMessage = msg.role === 'assistant' && 
+            index === updatedConversation.messages.length - 1;
+          
+          return {
+            id: msg.id,
+            content: msg.content,
+            type: 'text',
+            timestamp: msg.timestamp,
+            isUser: msg.role === 'user',
+            metadata: {
+              ...msg.metadata,
+              assessment_stage: msg.metadata?.assessment_stage,
+              conversation_stage: updatedConversation.currentStage,
+              // Add hospital data to the latest AI message if available
+              hospitalData: isLatestAssistantMessage && currentHospitalData ? currentHospitalData : msg.metadata?.hospitalData
+            }
+          };
+        });
+        setMessages(chatMessages);
+      }
+
+      // THEN: Play TTS asynchronously (don't await - let it play in background)
+      // Convert text to natural human-like speech (not reading everything)
+      const textToSpeak = response.brief_text || response.response || '';
+      
+      // Only play TTS if there's text to speak
+      if (textToSpeak.trim()) {
+        // Convert to natural speech - summarize key points
+        const naturalSpeech = convertToNaturalSpeech(textToSpeak);
+        console.log('🔊 Playing natural TTS:', naturalSpeech.substring(0, 100) + '...');
+        
+        // Play TTS without blocking - fire and forget
+        playBrowserTTS(naturalSpeech).catch(err => {
+          console.log('Voice TTS error (non-blocking):', err);
+        });
+      }
       
     } catch (error) {
-      console.error('Failed to send message:', error);
+      console.error('Failed to send conversational message:', error);
+      
+      // Add error message to conversation
+      conversationalService.addMessage('assistant', 
+        'I apologize, but I encountered an error. Please try again or seek immediate medical attention if this is an emergency.'
+      );
     } finally {
       setIsTyping(false);
     }
   };
 
-  // Handle voice input
+  // Handle voice input with conversational approach
   const handleVoiceInput = async () => {
     try {
       if (voiceAgent.isActive) {
@@ -106,6 +265,237 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
   const handleEmergencyCall = () => {
     // Emergency contacts logic would go here
     window.open('tel:911', '_self');
+  };
+
+  // Detect language from text for TTS
+  const detectLanguageForTTS = (text: string): string => {
+    // Korean detection
+    if (/[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(text)) {
+      return 'ko-KR';
+    }
+    // Japanese detection
+    if (/[ひ-ゖヰ-ヺカ-ヿ一-龯ァ-ヴ]/.test(text)) {
+      return 'ja-JP';
+    }
+    // Spanish detection (common Spanish words)
+    const spanishWords = ['dolor', 'cabeza', 'fiebre', 'médico', 'hospital', 'emergencia', 'síntomas'];
+    if (spanishWords.some(word => text.toLowerCase().includes(word))) {
+      return 'es-ES';
+    }
+    // Default to English
+    return 'en-US';
+  };
+
+  // Convert formal text to natural speech (human-like summary)
+  const convertToNaturalSpeech = (text: string): string => {
+    const lang = detectLanguageForTTS(text);
+    
+    // Clean markdown formatting first
+    let cleanText = text
+      .replace(/\*\*/g, '')
+      .replace(/\*/g, '')
+      .replace(/#{1,6}\s/g, '')
+      .replace(/BRIEF:|DETAILED:/g, '')
+      .trim();
+
+    // Check if this is a final diagnosis (contains diagnosis keywords)
+    const isDiagnosis = /진단:|Diagnosis:|診断:|Diagnóstico:/i.test(cleanText);
+    
+    if (isDiagnosis) {
+      // Extract key information for natural speech
+      if (lang === 'ko-KR') {
+        // Korean natural speech conversion for diagnosis
+        const diagnosisMatch = cleanText.match(/진단[:\s]*([^\n*]+)/i);
+        const diagnosis = diagnosisMatch ? diagnosisMatch[1].trim() : '';
+        
+        if (diagnosis) {
+          return `${diagnosis}으로 보입니다. 자세한 치료 방법과 근처 병원 정보는 화면을 확인해 주세요.`;
+        }
+      } else if (lang === 'ja-JP') {
+        const diagnosisMatch = cleanText.match(/診断[:\s]*([^\n*]+)/i);
+        const diagnosis = diagnosisMatch ? diagnosisMatch[1].trim() : '';
+        
+        if (diagnosis) {
+          return `${diagnosis}の可能性があります。詳しい情報は画面でご確認ください。`;
+        }
+      } else if (lang === 'es-ES') {
+        const diagnosisMatch = cleanText.match(/Diagnóstico[:\s]*([^\n*]+)/i);
+        const diagnosis = diagnosisMatch ? diagnosisMatch[1].trim() : '';
+        
+        if (diagnosis) {
+          return `Parece ser ${diagnosis}. Consulte la pantalla para más información.`;
+        }
+      } else {
+        const diagnosisMatch = cleanText.match(/Diagnosis[:\s]*([^\n*]+)/i);
+        const diagnosis = diagnosisMatch ? diagnosisMatch[1].trim() : '';
+        
+        if (diagnosis) {
+          return `This looks like ${diagnosis}. Please check the screen for detailed information and nearby hospitals.`;
+        }
+      }
+    }
+    
+    // For non-diagnosis messages (questions, clarifications)
+    // Summarize the key content naturally
+    if (lang === 'ko-KR') {
+      // Korean: Extract the main question/request
+      // Remove filler phrases and keep the core message
+      let summary = cleanText
+        .replace(/알겠습니다[.\s]*/g, '')
+        .replace(/감사합니다[.\s]*/g, '')
+        .replace(/말씀해 주셔서[.\s]*/g, '')
+        .replace(/증상을[.\s]*/g, '')
+        .trim();
+      
+      // If it's a question about symptoms, summarize it
+      if (summary.includes('언제') || summary.includes('어떤') || summary.includes('있으신가요') || summary.includes('알려주')) {
+        // Extract the key question parts
+        const hasWhen = summary.includes('언제');
+        const hasOther = summary.includes('다른 증상') || summary.includes('동반');
+        const hasSeverity = summary.includes('정도') || summary.includes('심한');
+        
+        let naturalQuestion = '';
+        if (hasWhen && hasOther) {
+          naturalQuestion = '언제부터 아프셨고, 다른 증상도 있으신지 알려주세요.';
+        } else if (hasWhen) {
+          naturalQuestion = '언제부터 증상이 시작되었나요?';
+        } else if (hasSeverity) {
+          naturalQuestion = '증상이 얼마나 심하신가요?';
+        } else if (hasOther) {
+          naturalQuestion = '다른 증상도 있으신가요?';
+        } else {
+          // Keep first meaningful sentence
+          naturalQuestion = summary.split(/[.?!]\s*/)[0] + '?';
+        }
+        return naturalQuestion;
+      }
+      
+      // Default: return cleaned text (max 150 chars)
+      return summary.length > 150 ? summary.substring(0, 150) + '...' : summary;
+      
+    } else if (lang === 'ja-JP') {
+      let summary = cleanText
+        .replace(/ありがとうございます[。\s]*/g, '')
+        .replace(/わかりました[。\s]*/g, '')
+        .trim();
+      
+      return summary.length > 150 ? summary.substring(0, 150) + '...' : summary;
+      
+    } else if (lang === 'es-ES') {
+      let summary = cleanText
+        .replace(/Entiendo[.\s]*/gi, '')
+        .replace(/Gracias[.\s]*/gi, '')
+        .trim();
+      
+      return summary.length > 150 ? summary.substring(0, 150) + '...' : summary;
+      
+    } else {
+      // English: Remove filler and summarize
+      let summary = cleanText
+        .replace(/I understand[.\s]*/gi, '')
+        .replace(/Thank you[.\s]*/gi, '')
+        .replace(/I see[.\s]*/gi, '')
+        .trim();
+      
+      // If asking questions, keep them natural
+      if (summary.includes('?')) {
+        // Extract questions and combine them naturally
+        const questions = summary.match(/[^.!?]*\?/g);
+        if (questions && questions.length > 0) {
+          // Take first 2 questions max
+          return questions.slice(0, 2).join(' ').trim();
+        }
+      }
+      
+      return summary.length > 150 ? summary.substring(0, 150) + '...' : summary;
+    }
+  };
+
+  // Browser TTS fallback function with proper language detection
+  const playBrowserTTS = async (text: string): Promise<void> => {
+    return new Promise((resolve) => {
+      try {
+        // Check if Speech Synthesis is supported
+        if (!('speechSynthesis' in window)) {
+          console.warn('Speech Synthesis not supported in this browser');
+          resolve();
+          return;
+        }
+
+        // Cancel any ongoing speech first
+        window.speechSynthesis.cancel();
+
+        // Clean text for TTS - remove markdown formatting
+        const cleanText = text
+          .replace(/\*\*/g, '') // Remove bold markers
+          .replace(/\*/g, '')   // Remove italic markers
+          .replace(/#{1,6}\s/g, '') // Remove headers
+          .replace(/BRIEF:|DETAILED:/g, '') // Remove section markers
+          .trim();
+
+        if (!cleanText) {
+          resolve();
+          return;
+        }
+
+        // Detect language from text content
+        const detectedLang = detectLanguageForTTS(cleanText);
+        console.log('🔊 Detected language for TTS:', detectedLang);
+
+        // Create speech utterance
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        
+        // Configure voice settings based on language
+        utterance.lang = detectedLang;
+        utterance.rate = detectedLang === 'ko-KR' ? 0.9 : 0.85; // Korean slightly faster
+        utterance.pitch = 1.0;
+        utterance.volume = 0.9;
+
+        // Try to find a voice for the detected language
+        const voices = window.speechSynthesis.getVoices();
+        const matchingVoice = voices.find(voice => voice.lang.startsWith(detectedLang.split('-')[0]));
+        if (matchingVoice) {
+          utterance.voice = matchingVoice;
+          console.log('🔊 Using voice:', matchingVoice.name);
+        }
+
+        // Set up event handlers
+        utterance.onend = () => {
+          console.log('🔊 Browser TTS playback completed');
+          resolve();
+        };
+        
+        utterance.onerror = (event) => {
+          console.error('🔊 Browser TTS error:', event.error);
+          resolve();
+        };
+
+        utterance.onstart = () => {
+          console.log('🔊 Browser TTS playback started for language:', detectedLang);
+        };
+
+        // Start speaking
+        window.speechSynthesis.speak(utterance);
+        
+        // Safety timeout - much longer to allow full speech (5 minutes max)
+        // Don't cancel speech, just resolve the promise
+        const safetyTimeout = setTimeout(() => {
+          console.log('🔊 TTS safety timeout reached, but not canceling speech');
+          resolve();
+        }, 300000); // 5 minutes max
+
+        // Clear timeout when speech ends naturally
+        utterance.onend = () => {
+          clearTimeout(safetyTimeout);
+          console.log('🔊 Browser TTS playback completed naturally');
+          resolve();
+        };
+        
+      } catch (error) {
+        console.error('🔊 Browser TTS initialization error:', error);
+        resolve();
+      }
+    });
   };
 
   return (
@@ -167,6 +557,10 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
       <main className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto chat-scrollbar px-3 py-3 sm:px-4 sm:py-4 lg:px-6">
           <div className="max-w-2xl sm:max-w-3xl lg:max-w-4xl mx-auto space-y-3 sm:space-y-4">
+            
+            {/* Conversation Progress Tracker */}
+            <ConversationProgress className="sticky top-0 z-10" />
+            
             {messages.length === 0 ? (
               // Welcome message
               <div className="text-center py-8 sm:py-12">

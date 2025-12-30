@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TTS Functionality Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-4">
+    <div class="max-w-2xl mx-auto">
+        <h1 class="text-2xl font-bold mb-6">TTS Functionality Test</h1>
+        
+        <div class="bg-white rounded-lg p-6 shadow">
+            <h2 class="text-lg font-semibold mb-4">Test Browser TTS</h2>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Text to speak:</label>
+                    <textarea id="textInput" class="w-full p-3 border border-gray-300 rounded-lg" rows="3" placeholder="Enter text to convert to speech...">Hello! I understand you have a headache. When did this start and do you have any other symptoms like fever, cough, or sore throat?</textarea>
+                </div>
+                
+                <div class="flex space-x-3">
+                    <button id="playTTS" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">
+                        🔊 Play TTS
+                    </button>
+                    <button id="stopTTS" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600">
+                        ⏹️ Stop TTS
+                    </button>
+                </div>
+                
+                <div id="status" class="text-sm text-gray-600"></div>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-lg p-6 shadow mt-6">
+            <h2 class="text-lg font-semibold mb-4">Test Conversational API + TTS</h2>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Message:</label>
+                    <input id="messageInput" type="text" class="w-full p-3 border border-gray-300 rounded-lg" placeholder="Enter your message..." value="I have a headache">
+                </div>
+                
+                <button id="sendMessage" class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600">
+                    📤 Send Message & Play TTS
+                </button>
+                
+                <div id="apiStatus" class="text-sm text-gray-600"></div>
+                <div id="responseText" class="text-sm bg-gray-50 p-3 rounded-lg hidden"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Browser TTS function
+        async function playBrowserTTS(text) {
+            return new Promise((resolve, reject) => {
+                try {
+                    if (!('speechSynthesis' in window)) {
+                        console.warn('Speech Synthesis not supported');
+                        resolve();
+                        return;
+                    }
+
+                    window.speechSynthesis.cancel();
+
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.rate = 0.85;
+                    utterance.pitch = 1.0;
+                    utterance.volume = 0.9;
+                    utterance.lang = 'en-US';
+
+                    utterance.onend = () => {
+                        console.log('TTS completed');
+                        document.getElementById('status').textContent = 'TTS completed';
+                        resolve();
+                    };
+                    
+                    utterance.onerror = (event) => {
+                        console.error('TTS error:', event.error);
+                        document.getElementById('status').textContent = 'TTS error: ' + event.error;
+                        resolve();
+                    };
+
+                    utterance.onstart = () => {
+                        console.log('TTS started');
+                        document.getElementById('status').textContent = 'TTS playing...';
+                    };
+
+                    window.speechSynthesis.speak(utterance);
+                    
+                    setTimeout(() => {
+                        if (window.speechSynthesis.speaking) {
+                            window.speechSynthesis.cancel();
+                        }
+                        resolve();
+                    }, text.length * 100 + 5000);
+                    
+                } catch (error) {
+                    console.error('TTS error:', error);
+                    document.getElementById('status').textContent = 'TTS error: ' + error.message;
+                    resolve();
+                }
+            });
+        }
+
+        // Event listeners
+        document.getElementById('playTTS').addEventListener('click', async () => {
+            const text = document.getElementById('textInput').value;
+            if (text.trim()) {
+                document.getElementById('status').textContent = 'Starting TTS...';
+                await playBrowserTTS(text);
+            }
+        });
+
+        document.getElementById('stopTTS').addEventListener('click', () => {
+            window.speechSynthesis.cancel();
+            document.getElementById('status').textContent = 'TTS stopped';
+        });
+
+        document.getElementById('sendMessage').addEventListener('click', async () => {
+            const message = document.getElementById('messageInput').value;
+            if (!message.trim()) return;
+
+            document.getElementById('apiStatus').textContent = 'Sending message...';
+            
+            try {
+                const response = await fetch('http://localhost:3001/chat/conversational', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        conversation_history: []
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('apiStatus').textContent = 'Response received, playing TTS...';
+                    
+                    // Show response
+                    const responseDiv = document.getElementById('responseText');
+                    responseDiv.textContent = data.brief_text || data.response;
+                    responseDiv.classList.remove('hidden');
+                    
+                    // Play TTS
+                    const textToSpeak = data.brief_text || data.response || 'Response received';
+                    await playBrowserTTS(textToSpeak);
+                    
+                    document.getElementById('apiStatus').textContent = 'Complete!';
+                } else {
+                    document.getElementById('apiStatus').textContent = 'API Error: ' + response.status;
+                }
+            } catch (error) {
+                document.getElementById('apiStatus').textContent = 'Error: ' + error.message;
+            }
+        });
+    </script>
+</body>
+</html>
