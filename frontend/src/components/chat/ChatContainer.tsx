@@ -261,13 +261,54 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
       }
 
       // THEN: Play TTS asynchronously (don't await - let it play in background)
-      // Convert text to natural human-like speech (not reading everything)
-      const textToSpeak = response.brief_text || response.response || '';
+      // For diagnosis (final stage), use detailed_text directly (it's the natural explanation)
+      // For other stages, use brief_text
+      let textToSpeak = response.brief_text || response.response || '';
+      
+      // If this is a final diagnosis, use detailed_text directly
+      // detailed_text contains the natural, human-friendly explanation
+      const isFinalDiagnosis = response.assessment_stage === 'final' || 
+                               response.assessment_stage === 'completed';
+      
+      if (isFinalDiagnosis && response.detailed_text) {
+        // Use detailed_text directly for TTS - it's already the natural explanation
+        textToSpeak = response.detailed_text;
+        console.log('🔊 Using detailed_text directly for TTS (final diagnosis)');
+      }
       
       // Only play TTS if there's text to speak
       if (textToSpeak.trim()) {
-        // Convert to natural speech - summarize key points
-        const naturalSpeech = convertToNaturalSpeech(textToSpeak);
+        // For final diagnosis, use detailed_text as-is (just clean it up)
+        // For other messages, convert to natural speech
+        let naturalSpeech: string;
+        
+        if (isFinalDiagnosis && response.detailed_text) {
+          // Clean up detailed_text and read the full content for final diagnosis
+          naturalSpeech = textToSpeak
+            .replace(/\*\*/g, '')
+            .replace(/\*/g, '')
+            .replace(/#{1,6}\s/g, '')
+            .replace(/BRIEF:|DETAILED:/g, '')
+            .replace(/\n+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          
+          // For final diagnosis, read the full detailed_text (no sentence limit)
+          // Add closing message in the appropriate language
+          const detectedLang = detectLanguageForTTS(naturalSpeech);
+          if (detectedLang === 'ko-KR') {
+            naturalSpeech += ' 자세한 내용과 근처 병원 정보는 화면을 확인해 주세요.';
+          } else if (detectedLang === 'ja-JP') {
+            naturalSpeech += ' 詳細と近くの病院情報は画面でご確認ください。';
+          } else if (detectedLang === 'es-ES') {
+            naturalSpeech += ' Consulte la pantalla para más detalles e información de hospitales cercanos.';
+          } else {
+            naturalSpeech += ' Please check the screen for nearby hospital information.';
+          }
+        } else {
+          naturalSpeech = convertToNaturalSpeech(textToSpeak);
+        }
+        
         console.log('🔊 Playing natural TTS:', naturalSpeech.substring(0, 100) + '...');
         
         // Play TTS without blocking - fire and forget
@@ -309,17 +350,19 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
 
   // Detect language from text for TTS
   const detectLanguageForTTS = (text: string): string => {
-    // Korean detection
+    // Korean detection - check for Korean characters
     if (/[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(text)) {
       return 'ko-KR';
     }
-    // Japanese detection
+    // Japanese detection - check for Japanese characters
     if (/[ひ-ゖヰ-ヺカ-ヿ一-龯ァ-ヴ]/.test(text)) {
       return 'ja-JP';
     }
-    // Spanish detection (common Spanish words)
-    const spanishWords = ['dolor', 'cabeza', 'fiebre', 'médico', 'hospital', 'emergencia', 'síntomas'];
-    if (spanishWords.some(word => text.toLowerCase().includes(word))) {
+    // Spanish detection - use words that are ONLY Spanish (not shared with English)
+    // Avoid words like "hospital" which exist in both languages
+    const spanishOnlyWords = ['dolor', 'cabeza', 'fiebre', 'médico', 'emergencia', 'síntomas', 'enfermo', 'ayuda', 'necesito', 'tengo'];
+    const lowerText = text.toLowerCase();
+    if (spanishOnlyWords.some(word => lowerText.includes(word))) {
       return 'es-ES';
     }
     // Default to English
@@ -344,7 +387,29 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
     if (isDiagnosis) {
       // Extract key information for natural speech
       if (lang === 'ko-KR') {
-        // Korean natural speech conversion for diagnosis
+        // Korean: Prioritize "추가 정보" section for natural speech
+        const additionalInfoMatch = cleanText.match(/추가\s*정보[:\s]*(.+?)(?:$|(?=\n\n|\*\*|진단:|병원:|약국:|응급:))/is);
+        
+        if (additionalInfoMatch && additionalInfoMatch[1]) {
+          let additionalInfo = additionalInfoMatch[1].trim();
+          additionalInfo = additionalInfo
+            .replace(/\*\*/g, '')
+            .replace(/\n+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          
+          // Take first 2-3 sentences if too long
+          const sentences = additionalInfo.split(/(?<=[.!?。])\s*/);
+          if (sentences.length > 3) {
+            additionalInfo = sentences.slice(0, 3).join(' ');
+          }
+          
+          if (additionalInfo.length > 0) {
+            return additionalInfo + ' 자세한 내용은 화면을 확인해 주세요.';
+          }
+        }
+        
+        // Fallback: Korean natural speech conversion for diagnosis
         const diagnosisMatch = cleanText.match(/진단[:\s]*([^\n*]+)/i);
         const diagnosis = diagnosisMatch ? diagnosisMatch[1].trim() : '';
         
@@ -366,8 +431,41 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
           return `Parece ser ${diagnosis}. Consulte la pantalla para más información.`;
         }
       } else {
-        // English: More robust diagnosis extraction
-        // Try multiple patterns for English diagnosis
+        // English: Prioritize "Additional Information" section for natural speech
+        // This section contains the most human-friendly explanation
+        
+        // Check if text contains "Additional Information" (case-insensitive)
+        const lowerText = cleanText.toLowerCase();
+        const additionalInfoIndex = lowerText.indexOf('additional information');
+        
+        console.log('🔍 Looking for Additional Information in text:', cleanText.substring(0, 200) + '...');
+        console.log('🔍 Additional Information index:', additionalInfoIndex);
+        
+        if (additionalInfoIndex !== -1) {
+          // Extract everything after "Additional Information" from original text
+          let additionalInfo = cleanText.substring(additionalInfoIndex + 'additional information'.length);
+          
+          // Clean up the text
+          additionalInfo = additionalInfo
+            .replace(/^\s*[:\s]*/g, '') // Remove leading colons and spaces
+            .replace(/\*\*/g, '')
+            .replace(/\n+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          
+          // If Additional Information is too long, take first 2-3 sentences
+          if (additionalInfo.length > 0) {
+            const sentences = additionalInfo.split(/(?<=[.!?])\s+/);
+            if (sentences.length > 3) {
+              additionalInfo = sentences.slice(0, 3).join(' ');
+            }
+            
+            console.log('🔊 TTS using Additional Information:', additionalInfo.substring(0, 100) + '...');
+            return additionalInfo + ' Please check the screen for detailed care instructions.';
+          }
+        }
+        
+        // Fallback: Extract diagnosis name and create natural speech
         let diagnosis = '';
         
         // Pattern 1: "Diagnosis: Something"
