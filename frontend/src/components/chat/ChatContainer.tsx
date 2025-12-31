@@ -23,6 +23,9 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
     onImageSent: () => setPendingImage(null)
   });
 
+  // Track if welcome TTS has been played
+  const welcomeTTSPlayedRef = useRef(false);
+  
   // Initialize conversation on first load
   useEffect(() => {
     if (!conversationStarted) {
@@ -42,6 +45,24 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
         }
       };
       setMessages([welcomeMessage]);
+      
+      // Play welcome TTS after user's first interaction (click/touch)
+      // Browser blocks autoplay without user interaction
+      const playWelcomeTTS = () => {
+        if (!welcomeTTSPlayedRef.current) {
+          welcomeTTSPlayedRef.current = true;
+          const welcomeText = "Hello! I'm your medical triage assistant. I'll help assess your symptoms. What's your main concern today?";
+          playBrowserTTS(welcomeText).catch(err => {
+            console.log('Welcome TTS error (non-blocking):', err);
+          });
+          // Remove listeners after playing
+          document.removeEventListener('click', playWelcomeTTS);
+          document.removeEventListener('touchstart', playWelcomeTTS);
+        }
+      };
+      
+      document.addEventListener('click', playWelcomeTTS, { once: true });
+      document.addEventListener('touchstart', playWelcomeTTS, { once: true });
     }
   }, [conversationStarted]);
 
@@ -629,16 +650,44 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
         
         // Configure voice settings based on language
         utterance.lang = detectedLang;
-        utterance.rate = detectedLang === 'ko-KR' ? 0.9 : 0.85; // Korean slightly faster
-        utterance.pitch = 1.0;
+        
+        // Adjust rate for more natural speech
+        // Korean needs slower rate for more natural flow
+        if (detectedLang === 'ko-KR') {
+          utterance.rate = 0.85; // Slower for Korean
+          utterance.pitch = 1.0;
+        } else if (detectedLang === 'ja-JP') {
+          utterance.rate = 0.85;
+          utterance.pitch = 1.0;
+        } else {
+          utterance.rate = 0.9; // English and others
+          utterance.pitch = 1.0;
+        }
         utterance.volume = 0.9;
 
-        // Try to find a voice for the detected language
+        // Try to find the best voice for the detected language
         const voices = window.speechSynthesis.getVoices();
-        const matchingVoice = voices.find(voice => voice.lang.startsWith(detectedLang.split('-')[0]));
+        
+        // For Korean, prefer Google or Microsoft voices which sound more natural
+        let matchingVoice = null;
+        if (detectedLang === 'ko-KR') {
+          // Priority: Google Korean > Microsoft Korean > Any Korean
+          matchingVoice = voices.find(voice => 
+            voice.lang.startsWith('ko') && voice.name.toLowerCase().includes('google')
+          ) || voices.find(voice => 
+            voice.lang.startsWith('ko') && voice.name.toLowerCase().includes('microsoft')
+          ) || voices.find(voice => 
+            voice.lang.startsWith('ko')
+          );
+        } else {
+          matchingVoice = voices.find(voice => voice.lang.startsWith(detectedLang.split('-')[0]));
+        }
+        
         if (matchingVoice) {
           utterance.voice = matchingVoice;
-          console.log('🔊 Using voice:', matchingVoice.name);
+          console.log('🔊 Using voice:', matchingVoice.name, matchingVoice.lang);
+        } else {
+          console.log('🔊 No matching voice found, using default for:', detectedLang);
         }
 
         // Set up event handlers
