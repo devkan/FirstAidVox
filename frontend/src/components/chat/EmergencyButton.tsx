@@ -13,13 +13,13 @@ export function EmergencyButton({ onEmergencyCall, className = '' }: EmergencyBu
     <>
       {/* Options Menu - Fixed position */}
       {showOptions && (
-        <div className="fixed bottom-32 right-3 sm:right-4 lg:right-6 z-50 bg-white rounded-2xl shadow-lg border border-red-200 overflow-hidden min-w-64">
+        <div className="fixed bottom-64 right-3 sm:bottom-68 sm:right-4 lg:right-6 z-50 bg-white rounded-2xl shadow-xl border border-red-200 overflow-hidden min-w-72">
           <div className="p-4 bg-red-50 border-b border-red-200">
-            <h3 className="font-semibold text-red-800 text-sm">Emergency Contacts</h3>
-            <p className="text-xs text-red-600 mt-1">Tap to call immediately</p>
+            <h3 className="font-bold text-red-800 text-lg">Emergency Contacts</h3>
+            <p className="text-sm text-red-600 mt-1">Tap to call immediately</p>
           </div>
           
-          <div className="p-2">
+          <div className="p-3">
             {emergencyContacts.map((contact) => (
               <button
                 key={contact.number}
@@ -27,24 +27,24 @@ export function EmergencyButton({ onEmergencyCall, className = '' }: EmergencyBu
                   window.open(`tel:${contact.number}`, '_self');
                   setShowOptions(false);
                 }}
-                className="w-full flex items-center space-x-3 p-3 hover:bg-red-50 rounded-lg transition-colors text-left"
+                className="w-full flex items-center space-x-4 p-4 hover:bg-red-50 rounded-xl transition-colors text-left mb-2 last:mb-0 border border-gray-100"
               >
-                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center text-lg">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center text-2xl">
                   {contact.icon}
                 </div>
                 <div className="flex-1">
-                  <div className="font-medium text-gray-900">{contact.name}</div>
-                  <div className="text-sm text-gray-600">{contact.description}</div>
-                  <div className="text-xs text-red-600 font-mono">{contact.number}</div>
+                  <div className="font-bold text-gray-900 text-lg">{contact.name}</div>
+                  <div className="text-base text-gray-600">{contact.description}</div>
+                  <div className="text-xl text-red-600 font-bold mt-1">{contact.number}</div>
                 </div>
               </button>
             ))}
           </div>
           
-          <div className="p-3 bg-gray-50 border-t">
+          <div className="p-4 bg-gray-50 border-t">
             <button
               onClick={() => setShowOptions(false)}
-              className="w-full text-center text-sm text-gray-600 hover:text-gray-800 transition-colors"
+              className="w-full text-center text-base font-medium text-gray-600 hover:text-gray-800 transition-colors py-2"
             >
               Close
             </button>

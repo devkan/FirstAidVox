@@ -861,7 +861,7 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
       {/* Emergency Button */}
       <EmergencyButton
         onEmergencyCall={handleEmergencyCall}
-        className="fixed bottom-16 right-3 sm:bottom-20 sm:right-4 lg:bottom-24 lg:right-6 z-50"
+        className="fixed bottom-48 right-3 sm:bottom-52 sm:right-4 lg:bottom-56 lg:right-6 z-50"
       />
     </div>
   );

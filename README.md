@@ -1,205 +1,173 @@
-# FirstAidVox - AI-Powered Emergency Medical Triage System
+# FirstAidVox - AI-Powered Medical Triage Assistant
 
-FirstAidVox is an AI-powered emergency medical triage system that integrates voice recognition, image analysis, and location-based services for comprehensive medical assistance.
+FirstAidVox is an AI-powered medical triage system that provides real-time symptom assessment through voice and text conversations, image analysis, and location-based hospital recommendations.
 
-## 🚀 Key Features
+## 🌟 Key Features
 
-### Multimodal Diagnostic System
-- **Voice Interaction**: Natural voice conversations powered by ElevenLabs TTS
-- **Image Analysis**: Injury/symptom image analysis using Gemini Vision
-- **Fact Checking**: Medical manual-based information verification via Vertex AI Search
-- **Location Services**: Nearby hospital search and navigation using Google Maps API
+### Conversational Medical Triage
+- **Multi-turn Conversations**: Natural dialogue flow with 3-4 clarifying questions before diagnosis
+- **Multilingual Support**: English, Korean (한국어), Japanese (日本語), Spanish (Español)
+- **Voice Interaction**: Real-time voice input using ElevenLabs Conversational AI
+- **Text-to-Speech**: Natural voice responses with language-appropriate TTS
 
-### User Journey
-1. **Access & Voice Interaction**: Access web app and describe symptoms via microphone
-2. **Multimodal Diagnosis**: Capture injury photos with camera for AI image analysis
-3. **Fact Checking**: Verify information against emergency care manuals
-4. **Action Guidance**: Display nearby hospital maps and generate English patient reports
+### AI-Powered Diagnosis
+- **Symptom Analysis**: Intelligent symptom assessment using Google Gemini AI
+- **Image Analysis**: Injury/symptom photo analysis with Gemini Vision
+- **Medical Fact-Checking**: Verification against medical manuals via Vertex AI Search
+- **Confidence Scoring**: Assessment confidence levels for transparency
 
-## 🏗️ System Architecture
+### Location Services
+- **Hospital Search**: Nearby hospital and pharmacy recommendations
+- **Google Maps Integration**: Interactive map with hospital markers
+- **Distance Calculation**: Shows distance to medical facilities
+- **Navigation**: One-click directions to selected hospitals
+
+### Emergency Features
+- **Emergency Contacts**: Quick access to 911 and Poison Control
+- **Urgency Assessment**: Low/Moderate/High/Emergency classification
+- **Offline Support**: Basic first aid information available offline
+
+## 🏗️ Architecture
 
 ```
-Frontend (React + TypeScript)
-├── Voice Interface (ElevenLabs)
-├── Camera Interface
-├── Map Component (Google Maps)
-└── Medical Report Card
-
-Backend (FastAPI + Python)
-├── Multimodal Handler
-├── Gemini AI Client
-├── Vertex AI Search
-└── Google Maps Service
+┌─────────────────────────────────────────────────────────────┐
+│                        Frontend                              │
+│  React 19 + TypeScript + Vite + Tailwind CSS                │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐   │
+│  │ Voice Agent │ │ Chat UI     │ │ Google Maps         │   │
+│  │ (ElevenLabs)│ │ (Messages)  │ │ (Hospital Markers)  │   │
+│  └─────────────┘ └─────────────┘ └─────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                        Backend                               │
+│  FastAPI + Python 3.9+                                       │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐   │
+│  │ Gemini AI   │ │ Vertex AI   │ │ Google Maps API     │   │
+│  │ (Diagnosis) │ │ (Search)    │ │ (Hospitals)         │   │
+│  └─────────────┘ └─────────────┘ └─────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
 ```
-
-## 🛠️ Technology Stack
-
-### Frontend
-- **React 19** + **TypeScript**
-- **Vite** (Build tool)
-- **Tailwind CSS** (Styling)
-- **ElevenLabs React SDK** (Voice processing)
-- **Google Maps React** (Map services)
-
-### Backend
-- **FastAPI** (Python web framework)
-- **Google Cloud Vertex AI** (Gemini models)
-- **Vertex AI Search** (Medical information search)
-- **Google Maps API** (Location services)
-- **Pydantic** (Data validation)
 
 ## 🚀 Quick Start
 
-### 1. Environment Setup
+### Prerequisites
+- Node.js 18+
+- Python 3.9+
+- Google Cloud Project with enabled APIs
+- ElevenLabs API Key (for voice features)
 
+### 1. Clone Repository
 ```bash
-# Clone repository
 git clone <repository-url>
 cd firstaidvox
-
-# Set up environment variables
-cp .env.example .env
-# Edit .env file with your actual API keys
 ```
 
-### 2. Google Cloud Setup
+### 2. Environment Setup
+```bash
+# Copy environment template
+cp .env.example .env
 
-1. Create project in Google Cloud Console
-2. Enable the following APIs:
-   - Vertex AI API
-   - Maps JavaScript API
-   - Places API
-3. Create service account and download key
-4. Save key file as `backend/service-account-key.json`
+# Edit with your API keys
+# Required: GOOGLE_CLOUD_PROJECT, GOOGLE_MAPS_API_KEY
+# Optional: ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID
+```
 
 ### 3. Run with Docker (Recommended)
-
 ```bash
-# Run entire system
 docker-compose up --build
-
-# Run individual services
-docker-compose up backend  # Backend only
-docker-compose up frontend # Frontend only
 ```
 
-### 4. Development Environment
+### 4. Or Run Manually
 
-#### Backend
+**Backend:**
 ```bash
 cd backend
 pip install -e .
 uvicorn app.main:app --reload --port 3001
 ```
 
-#### Frontend
+**Frontend:**
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-## 📡 API Endpoints
+### 5. Access Application
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:3001
+- API Docs: http://localhost:3001/docs
 
-### POST /chat
-Multimodal medical consultation request
+## 📁 Project Structure
 
-**Request Format** (FormData):
 ```
-text: string          # Voice text (required)
-latitude?: number     # Latitude (optional)
-longitude?: number    # Longitude (optional)  
-image?: File         # Image file (optional)
+firstaidvox/
+├── frontend/                 # React frontend application
+│   ├── src/
+│   │   ├── components/      # UI components
+│   │   ├── hooks/           # Custom React hooks
+│   │   ├── services/        # API and voice services
+│   │   └── types/           # TypeScript definitions
+│   └── README.md
+├── backend/                  # FastAPI backend application
+│   ├── app/
+│   │   ├── handlers/        # Request handlers
+│   │   ├── models/          # Data models
+│   │   └── services/        # Business logic
+│   └── README.md
+├── docker-compose.yml        # Docker orchestration
+└── README.md                 # This file
 ```
 
-**Response Format**:
-```json
-{
-  "response": "AI response text",
-  "hospital_data": [...],
-  "condition": "diagnosis",
-  "urgencyLevel": "low|moderate|high",
-  "confidence": 0.85
-}
-```
+## 🔧 Configuration
 
-### GET /health
-System status check
+### Required Environment Variables
 
-### GET /metrics
-Performance metrics
+| Variable | Description |
+|----------|-------------|
+| `GOOGLE_CLOUD_PROJECT` | Google Cloud project ID |
+| `GOOGLE_MAPS_API_KEY` | Google Maps API key |
+
+### Optional Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ELEVENLABS_API_KEY` | ElevenLabs API key | - |
+| `ELEVENLABS_AGENT_ID` | ElevenLabs Agent ID | - |
+| `VERTEX_AI_LOCATION` | Vertex AI region | us-central1 |
+| `GEMINI_MODEL_NAME` | Gemini model | gemini-1.5-flash-001 |
 
 ## 🧪 Testing
 
-### Backend Tests
 ```bash
-cd backend
-pytest
+# Backend tests
+cd backend && pytest
+
+# Frontend tests
+cd frontend && npm test
 ```
 
-### Frontend Tests
-```bash
-cd frontend
-npm test
-```
+## 📱 Usage Flow
 
-### Integration Tests
-```bash
-# With entire system running
-npm run test:integration
-```
-
-## 🔧 Development Guide
-
-### Environment Variables
-
-Key environment variables:
-
-- `GOOGLE_CLOUD_PROJECT`: Google Cloud project ID
-- `GOOGLE_MAPS_API_KEY`: Google Maps API key
-- `ELEVENLABS_API_KEY`: ElevenLabs API key
-- `SEARCH_ENGINE_ID`: Vertex AI Search engine ID
-
-### Port Configuration
-
-- **Frontend**: http://localhost:5173
-- **Backend**: http://localhost:3001 (Docker maps 8000→3001)
-
-### CORS Configuration
-
-Backend allows these origins:
-- http://localhost:5173 (Vite dev server)
-- http://localhost:3000 (Create React App)
-- http://localhost:8080 (Other dev servers)
-
-## 📱 Usage
-
-1. **Access Web App**: http://localhost:5173
-2. **Click Microphone**: "How can I help you?" voice prompt
-3. **Describe Symptoms**: Voice description of symptoms
-4. **Take Photo** (optional): Camera button to capture injury photos
-5. **AI Analysis**: Multimodal AI analyzes symptoms and provides first aid guidance
-6. **Hospital Guidance**: Nearby hospital map display and directions
-7. **Generate Report**: English patient report for medical professionals
+1. **Start Conversation**: Type or speak your symptoms
+2. **Answer Questions**: AI asks 3-4 clarifying questions
+3. **Take Photo** (optional): Capture injury/symptom images
+4. **Receive Diagnosis**: AI provides assessment with confidence score
+5. **Find Hospitals**: View nearby medical facilities on map
+6. **Get Directions**: Navigate to selected hospital
 
 ## 🚨 Emergency Response
 
-- **Emergency Contacts**: Emergency contact button at bottom of app
-- **Offline Mode**: Basic first aid information available without network
-- **Multilingual Support**: English patient reports for international users
+- Red emergency button provides quick access to:
+  - 911 Emergency Services
+  - Poison Control Center (1-800-222-1222)
 
-## 🤝 Contributing
+## ⚠️ Medical Disclaimer
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+FirstAidVox is designed as an initial triage tool for emergency situations. The advice from this system **cannot replace professional medical diagnosis or treatment**. In serious emergency situations, please call 911 immediately or visit the nearest emergency room.
 
 ## 📄 License
 
-This project is distributed under the MIT License. See `LICENSE` file for details.
-
-## 🏥 Medical Disclaimer
-
-FirstAidVox is designed as an initial triage tool for emergency situations. The advice from this system cannot replace professional medical diagnosis or treatment. In serious emergency situations, please call 911 immediately or visit the nearest emergency room.
+MIT License - See LICENSE file for details.

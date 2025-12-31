@@ -239,7 +239,38 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
             // 🔊 Play TTS response with proper language (ElevenLabs TTS API)
             console.log('🔊 Playing TTS for backend response...');
             if (playTTSResponseRef.current) {
-              await playTTSResponseRef.current(briefSummary);
+              // For final diagnosis, use detailed_text instead of brief_text
+              const isFinalDiagnosis = agentResponse.assessment_stage === 'final' || 
+                                       agentResponse.assessment_stage === 'completed';
+              
+              let textToSpeak = briefSummary;
+              
+              if (isFinalDiagnosis && agentResponse.detailed_text) {
+                // Use detailed_text for final diagnosis (more natural explanation)
+                textToSpeak = agentResponse.detailed_text
+                  .replace(/\*\*/g, '')
+                  .replace(/\*/g, '')
+                  .replace(/#{1,6}\s/g, '')
+                  .replace(/BRIEF:|DETAILED:/g, '')
+                  .replace(/\n+/g, ' ')
+                  .replace(/\s+/g, ' ')
+                  // Remove function call patterns
+                  .replace(/search_hospitals\s*\([^)]*\)/gi, '')
+                  .replace(/\w+_\w+\s*\([^)]*\)/g, '')
+                  .trim();
+                
+                // Add closing message based on language
+                const hasKorean = /[가-힣]/.test(textToSpeak);
+                if (hasKorean) {
+                  textToSpeak += ' 자세한 내용과 근처 병원 정보는 화면을 확인해 주세요.';
+                } else {
+                  textToSpeak += ' Please check the screen for nearby hospital information.';
+                }
+                
+                console.log('🔊 Using detailed_text for voice TTS (final diagnosis)');
+              }
+              
+              await playTTSResponseRef.current(textToSpeak);
             }
             
             stableVoiceState.current.stopProcessing();
