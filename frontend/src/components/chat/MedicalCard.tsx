@@ -338,7 +338,7 @@ export const MedicalCard = React.memo(function MedicalCard({ assessment, timesta
             </div>
             
             <button 
-              onClick={() => handleViewOnMap(assessment.hospitalData)}
+              onClick={() => handleViewOnMap(assessment.hospitalData || [])}
               className="text-xs sm:text-sm font-medium hover:underline focus:outline-none touch-manipulation"
             >
               View All on Map →

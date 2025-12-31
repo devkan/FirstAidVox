@@ -15,6 +15,23 @@ export interface AgentRequest {
   image?: Blob; // User uploaded image file (optional)
 }
 
+// Conversation history message type
+export interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+// Conversational chat request type
+export interface ConversationalRequest {
+  message: string;
+  conversation_history: ConversationMessage[];
+  user_location?: {
+    latitude: number;
+    longitude: number;
+  };
+  image_data?: string; // Base64 encoded image
+}
+
 export interface AgentResponse {
   response?: string; // AI agent response text for TTS
   advice?: string; // Alternative field name for response
@@ -25,6 +42,10 @@ export interface AgentResponse {
   confidence_level?: 'low' | 'moderate' | 'high'; // Alternative field name for urgency
   confidence?: number; // Assessment confidence level
   timestamp?: string; // Response timestamp
+  // Conversational response fields
+  brief_text?: string; // Brief summary for TTS
+  detailed_text?: string; // Detailed advice for display
+  assessment_stage?: 'initial' | 'clarification' | 'final' | 'completed'; // Current stage
 }
 
 export interface ApiError extends Error {
@@ -62,7 +83,7 @@ async function withRetry<T>(
       lastError = error as Error;
       
       // Handle error through error handler
-      const result = errorHandler.handleBackendError(lastError, context.component, context.action);
+      errorHandler.handleBackendError(lastError, context.component, context.action);
       
       // Don't retry on non-retryable errors
       if (error instanceof Error && 'retryable' in error && !error.retryable) {
@@ -260,7 +281,7 @@ export class BackendService {
       }
       
       // Queue request for when connection is restored
-      offlineFallbackService.queueOfflineRequest('agent_message', { 
+      offlineFallbackService.queueOfflineRequest('medical_query', { 
         transcript, 
         location, 
         imageFile 
@@ -296,6 +317,134 @@ export class BackendService {
       errorStats: errorHandler.getErrorStats(),
       offlineCapabilities: offlineFallbackService.getOfflineCapabilities()
     };
+  }
+
+  /**
+   * Send conversational message to AI agent with conversation history
+   * This enables proper multi-turn diagnosis flow with language detection
+   * Validates: Requirements 1.3, 2.3, 3.1, 5.5
+   */
+  async sendConversationalMessage(
+    message: string,
+    conversationHistory: ConversationMessage[],
+    location?: Coordinates,
+    imageFile?: Blob
+  ): Promise<AgentResponse> {
+    console.log('🚀 BackendService.sendConversationalMessage called with:', { 
+      message, 
+      historyLength: conversationHistory.length,
+      location, 
+      hasImage: !!imageFile 
+    });
+    
+    if (!message.trim()) {
+      const error = createApiError('Message cannot be empty', 400, false);
+      errorHandler.handleError(error, {
+        type: ErrorType.VALIDATION,
+        severity: ErrorSeverity.LOW,
+        component: 'BackendService',
+        action: 'sendConversationalMessage',
+        timestamp: new Date()
+      });
+      throw error;
+    }
+    
+    // Build request body
+    const requestBody: ConversationalRequest = {
+      message: message.trim(),
+      conversation_history: conversationHistory
+    };
+    
+    // Add location data if provided
+    if (location) {
+      if (typeof location.latitude !== 'number' || typeof location.longitude !== 'number') {
+        const error = createApiError('Invalid location coordinates', 400, false);
+        errorHandler.handleError(error, {
+          type: ErrorType.VALIDATION,
+          severity: ErrorSeverity.MEDIUM,
+          component: 'BackendService',
+          action: 'sendConversationalMessage',
+          timestamp: new Date()
+        });
+        throw error;
+      }
+      
+      requestBody.user_location = {
+        latitude: location.latitude,
+        longitude: location.longitude
+      };
+    }
+    
+    // Add image data if provided (convert to base64)
+    if (imageFile) {
+      // Validate image size (max 10MB)
+      const maxSize = 10 * 1024 * 1024;
+      if (imageFile.size > maxSize) {
+        const error = createApiError('Image size exceeds 10MB limit', 413, false);
+        errorHandler.handleError(error, {
+          type: ErrorType.VALIDATION,
+          severity: ErrorSeverity.MEDIUM,
+          component: 'BackendService',
+          action: 'sendConversationalMessage',
+          timestamp: new Date()
+        });
+        throw error;
+      }
+      
+      // Validate image type
+      const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+      if (!validTypes.includes(imageFile.type)) {
+        const error = createApiError('Invalid image format. Supported: JPEG, PNG, WebP', 415, false);
+        errorHandler.handleError(error, {
+          type: ErrorType.VALIDATION,
+          severity: ErrorSeverity.MEDIUM,
+          component: 'BackendService',
+          action: 'sendConversationalMessage',
+          timestamp: new Date()
+        });
+        throw error;
+      }
+      
+      // Convert image to base64
+      try {
+        const arrayBuffer = await imageFile.arrayBuffer();
+        const base64 = btoa(
+          new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+        );
+        requestBody.image_data = base64;
+      } catch (e) {
+        console.error('Failed to convert image to base64:', e);
+      }
+    }
+
+    try {
+      console.log('📡 Sending conversational request to backend:', `${API_BASE_URL}/chat/conversational`);
+      return await withRetry(
+        () => httpRequest<AgentResponse>('/chat/conversational', {
+          method: 'POST',
+          body: JSON.stringify(requestBody),
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }, { component: 'BackendService', action: 'sendConversationalMessage' }),
+        { component: 'BackendService', action: 'sendConversationalMessage' }
+      );
+    } catch (error) {
+      // Try offline fallback for medical advice
+      const offlineAdvice = offlineFallbackService.getOfflineMedicalAdvice(message);
+      if (offlineAdvice) {
+        console.log('Using offline medical advice fallback');
+        return {
+          response: offlineAdvice.advice,
+          condition: offlineAdvice.condition,
+          urgencyLevel: offlineAdvice.urgencyLevel,
+          confidence: offlineAdvice.confidence,
+          assessment_stage: 'initial'
+        };
+      }
+      
+      throw error;
+    }
   }
 }
 

@@ -537,9 +537,14 @@ def create_app() -> FastAPI:
                         radius_km=10
                     )
                     hospital_data = [hospital.dict() for hospital in hospitals]
-                    logger.info(f"Found {len(hospital_data)} hospitals/pharmacies near user location (final diagnosis)")
+                    logger.info(f"✅ Found {len(hospital_data)} hospitals/pharmacies near user location (final diagnosis)")
+                    
+                    # Log first few results for debugging
+                    for h in hospital_data[:3]:
+                        logger.info(f"  🏥 {h.get('name')} - {h.get('place_type')} - {h.get('address')}")
+                        
                 except Exception as e:
-                    logger.error(f"Hospital search failed: {e}")
+                    logger.error(f"❌ Hospital search failed: {e}")
             
             # Also check function calls (backup method) - only for final stage
             if ai_response.function_calls and not hospital_data and assessment_stage == "final":

@@ -47,84 +47,106 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
   }, [conversationStarted]);
 
   // Convert conversation history to chat messages
-  // NOTE: This effect only handles initial load and medical assessment changes
-  // Real-time message updates happen in handleSendMessage to preserve hospital data
+  // NOTE: This effect handles syncing conversationalService messages to chat UI
+  // It triggers on medical assessment changes AND periodically to catch voice messages
   useEffect(() => {
-    const conversation = conversationalService.getCurrentConversation();
-    if (!conversation) return;
+    const syncMessages = () => {
+      const conversation = conversationalService.getCurrentConversation();
+      if (!conversation) return;
 
-    // Skip if we already have messages with hospital data (they're managed by handleSendMessage)
-    // Only run on initial load (messages.length === 0 or just welcome message)
-    const hasOnlyWelcome = messages.length === 1 && messages[0]?.id === 'welcome-msg';
-    const hasHospitalData = messages.some(msg => msg.metadata?.hospitalData?.length > 0);
-    
-    // Don't overwrite messages that have hospital data
-    if (hasHospitalData) {
-      console.log('📋 Skipping message sync - hospital data exists');
-      return;
-    }
-    
-    const shouldSync = messages.length === 0 || hasOnlyWelcome;
-    
-    if (!shouldSync && !medicalState.currentAssessment) {
-      return;
-    }
-
-    const chatMessages: ChatMessage[] = conversation.messages.map((msg) => ({
-      id: msg.id,
-      content: msg.content,
-      type: 'text',
-      timestamp: msg.timestamp,
-      isUser: msg.role === 'user',
-      metadata: {
-        ...msg.metadata,
-        assessment_stage: msg.metadata?.assessment_stage,
-        conversation_stage: conversation.currentStage,
-        // Preserve hospital data from message metadata
-        hospitalData: msg.metadata?.hospitalData
+      // Skip if we already have messages with hospital data (they're managed by handleSendMessage)
+      // Only run on initial load (messages.length === 0 or just welcome message)
+      const hasOnlyWelcome = messages.length === 1 && messages[0]?.id === 'welcome-msg';
+      const hasHospitalData = messages.some(msg => (msg.metadata?.hospitalData?.length ?? 0) > 0);
+      
+      // Check if conversation has new messages we haven't displayed yet
+      const conversationMsgCount = conversation.messages.length;
+      const displayedMsgCount = messages.filter(m => m.id !== 'welcome-msg' && m.type !== 'medical').length;
+      const hasNewMessages = conversationMsgCount > displayedMsgCount;
+      
+      // Don't overwrite messages that have hospital data unless there are new messages
+      if (hasHospitalData && !hasNewMessages) {
+        console.log('📋 Skipping message sync - hospital data exists and no new messages');
+        return;
       }
-    }));
+      
+      const shouldSync = messages.length === 0 || hasOnlyWelcome || hasNewMessages;
+      
+      if (!shouldSync && !medicalState.currentAssessment) {
+        return;
+      }
 
-    // Add welcome message if no messages yet
-    if (chatMessages.length === 0) {
-      const welcomeMessage: ChatMessage = {
-        id: 'welcome-msg',
-        content: "Hello! I'm your medical triage assistant. I'll help assess your symptoms through a series of questions. What's your main concern today?",
+      console.log('📋 Syncing messages from conversationalService:', {
+        conversationMsgCount,
+        displayedMsgCount,
+        hasNewMessages,
+        hasHospitalData
+      });
+
+      const chatMessages: ChatMessage[] = conversation.messages.map((msg) => ({
+        id: msg.id,
+        content: msg.content,
         type: 'text',
-        timestamp: new Date(),
-        isUser: false,
+        timestamp: msg.timestamp,
+        isUser: msg.role === 'user',
         metadata: {
-          isWelcome: true,
-          assessment_stage: 'initial'
+          ...msg.metadata,
+          assessment_stage: msg.metadata?.assessment_stage,
+          conversation_stage: conversation.currentStage,
+          // Preserve hospital data from message metadata
+          hospitalData: msg.metadata?.hospitalData
         }
-      };
-      chatMessages.unshift(welcomeMessage);
-    }
+      }));
 
-    // Add medical assessment as special message if available and conversation is in final stage
-    if (medicalState.currentAssessment && conversation.currentStage === 'final') {
-      // Check if medical assessment message already exists
-      const hasMedicalMessage = chatMessages.some(msg => msg.type === 'medical');
-      if (!hasMedicalMessage) {
-        const medicalMessage: ChatMessage = {
-          id: `medical-assessment-${Date.now()}`,
-          content: medicalState.currentAssessment.advice,
-          type: 'medical',
+      // Add welcome message if no messages yet
+      if (chatMessages.length === 0) {
+        const welcomeMessage: ChatMessage = {
+          id: 'welcome-msg',
+          content: "Hello! I'm your medical triage assistant. I'll help assess your symptoms through a series of questions. What's your main concern today?",
+          type: 'text',
           timestamp: new Date(),
           isUser: false,
           metadata: {
-            medicalData: medicalState.currentAssessment,
-            urgency: medicalState.currentAssessment.urgencyLevel,
-            confidence: medicalState.currentAssessment.confidence,
-            assessment_stage: 'final'
+            isWelcome: true,
+            assessment_stage: 'initial'
           }
         };
-        chatMessages.push(medicalMessage);
+        chatMessages.unshift(welcomeMessage);
       }
-    }
 
-    setMessages(chatMessages);
-  }, [medicalState.currentAssessment]); // Only trigger on medical assessment changes
+      // Add medical assessment as special message if available and conversation is in final stage
+      if (medicalState.currentAssessment && conversation.currentStage === 'final') {
+        // Check if medical assessment message already exists
+        const hasMedicalMessage = chatMessages.some(msg => msg.type === 'medical');
+        if (!hasMedicalMessage) {
+          const medicalMessage: ChatMessage = {
+            id: `medical-assessment-${Date.now()}`,
+            content: medicalState.currentAssessment.advice,
+            type: 'medical',
+            timestamp: new Date(),
+            isUser: false,
+            metadata: {
+              medicalData: medicalState.currentAssessment,
+              urgency: medicalState.currentAssessment.urgencyLevel,
+              confidence: medicalState.currentAssessment.confidence,
+              assessment_stage: 'final'
+            }
+          };
+          chatMessages.push(medicalMessage);
+        }
+      }
+
+      setMessages(chatMessages);
+    };
+
+    // Initial sync
+    syncMessages();
+
+    // Set up interval to check for new voice messages
+    const syncInterval = setInterval(syncMessages, 500); // Check every 500ms
+
+    return () => clearInterval(syncInterval);
+  }, [medicalState.currentAssessment]); // Trigger on medical assessment changes
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
@@ -176,8 +198,19 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
         stage: response.assessment_stage,
         urgency: response.urgency_level,
         confidence: response.confidence,
-        hasHospitals: !!response.hospital_data?.length
+        hasHospitals: !!response.hospital_data?.length,
+        hospitalCount: response.hospital_data?.length || 0
       });
+
+      // Debug: Log hospital details
+      if (response.hospital_data?.length) {
+        console.log('🏥 Hospital data received from backend:');
+        response.hospital_data.forEach((h: any, i: number) => {
+          console.log(`  ${i + 1}. ${h.name} (${h.place_type}) - ${h.address} - Lat: ${h.latitude}, Lng: ${h.longitude}`);
+        });
+      } else {
+        console.log('⚠️ No hospital data in response. Stage:', response.assessment_stage);
+      }
 
       // Update medical state if this is a final assessment
       if (response.assessment_stage === 'final' || response.urgency_level !== 'moderate') {
@@ -193,6 +226,10 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
 
       // Store hospital data for this response to persist it
       const currentHospitalData = response.hospital_data;
+      console.log('💾 Storing hospital data for message update:', {
+        hasData: !!currentHospitalData,
+        count: currentHospitalData?.length || 0
+      });
 
       // FIRST: Update messages immediately (before TTS) so text appears first
       const updatedConversation = conversationalService.getCurrentConversation();
@@ -201,6 +238,16 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
           // Check if this is the latest assistant message
           const isLatestAssistantMessage = msg.role === 'assistant' && 
             index === updatedConversation.messages.length - 1;
+          
+          // Debug log for hospital data assignment
+          if (isLatestAssistantMessage) {
+            console.log('🔄 Assigning hospital data to latest AI message:', {
+              msgId: msg.id,
+              hasCurrentHospitalData: !!currentHospitalData,
+              hasMetadataHospitalData: !!msg.metadata?.hospitalData,
+              willUseCurrentData: !!(isLatestAssistantMessage && currentHospitalData)
+            });
+          }
           
           return {
             id: msg.id,
@@ -217,6 +264,11 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
             }
           };
         });
+        
+        // Debug: Check if any message has hospital data
+        const messagesWithHospitals = chatMessages.filter(m => (m.metadata?.hospitalData?.length ?? 0) > 0);
+        console.log('📊 Messages with hospital data after update:', messagesWithHospitals.length);
+        
         setMessages(chatMessages);
       }
 
@@ -299,7 +351,7 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
       .trim();
 
     // Check if this is a final diagnosis (contains diagnosis keywords)
-    const isDiagnosis = /진단:|Diagnosis:|診断:|Diagnóstico:/i.test(cleanText);
+    const isDiagnosis = /진단[:\s]|Diagnosis[:\s]|診断[:\s]|Diagnóstico[:\s]/i.test(cleanText);
     
     if (isDiagnosis) {
       // Extract key information for natural speech
@@ -326,11 +378,42 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
           return `Parece ser ${diagnosis}. Consulte la pantalla para más información.`;
         }
       } else {
-        const diagnosisMatch = cleanText.match(/Diagnosis[:\s]*([^\n*]+)/i);
-        const diagnosis = diagnosisMatch ? diagnosisMatch[1].trim() : '';
+        // English: More robust diagnosis extraction
+        // Try multiple patterns for English diagnosis
+        let diagnosis = '';
+        
+        // Pattern 1: "Diagnosis: Something"
+        const pattern1 = cleanText.match(/Diagnosis[:\s]+([^.\n*]+)/i);
+        if (pattern1) {
+          diagnosis = pattern1[1].trim();
+        }
+        
+        // Pattern 2: "This looks like X" or "appears to be X"
+        if (!diagnosis) {
+          const pattern2 = cleanText.match(/(?:looks like|appears to be|seems to be|likely|probably)[:\s]+([^.\n*]+)/i);
+          if (pattern2) {
+            diagnosis = pattern2[1].trim();
+          }
+        }
+        
+        // Pattern 3: "Upper respiratory infection" or similar condition names
+        if (!diagnosis) {
+          const pattern3 = cleanText.match(/(?:Upper|Lower|Common|Viral|Bacterial)\s+[a-zA-Z\s]+(?:infection|cold|flu|fever|pain)/i);
+          if (pattern3) {
+            diagnosis = pattern3[0].trim();
+          }
+        }
         
         if (diagnosis) {
-          return `This looks like ${diagnosis}. Please check the screen for detailed information and nearby hospitals.`;
+          // Clean up the diagnosis text
+          diagnosis = diagnosis.replace(/^\s*[-:]\s*/, '').trim();
+          return `This looks like ${diagnosis}. Please check the screen for detailed care instructions and nearby hospitals.`;
+        }
+        
+        // Fallback: Extract first meaningful sentence about the condition
+        const firstSentence = cleanText.split(/[.!]\s/)[0];
+        if (firstSentence && firstSentence.length < 100) {
+          return `${firstSentence}. Check the screen for more details.`;
         }
       }
     }
@@ -395,6 +478,7 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
         .replace(/I understand[.\s]*/gi, '')
         .replace(/Thank you[.\s]*/gi, '')
         .replace(/I see[.\s]*/gi, '')
+        .replace(/Based on your symptoms[,.\s]*/gi, '')
         .trim();
       
       // If asking questions, keep them natural
@@ -402,9 +486,18 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
         // Extract questions and combine them naturally
         const questions = summary.match(/[^.!?]*\?/g);
         if (questions && questions.length > 0) {
-          // Take first 2 questions max
-          return questions.slice(0, 2).join(' ').trim();
+          // Take first 2 questions max and clean them up
+          const cleanQuestions = questions.slice(0, 2).map(q => q.trim()).join(' ');
+          return cleanQuestions;
         }
+      }
+      
+      // For statements, extract the key message
+      const sentences = summary.split(/[.!]\s+/);
+      if (sentences.length > 0) {
+        // Take first 1-2 meaningful sentences
+        const keyMessage = sentences.slice(0, 2).join('. ').trim();
+        return keyMessage.length > 150 ? keyMessage.substring(0, 150) + '...' : keyMessage;
       }
       
       return summary.length > 150 ? summary.substring(0, 150) + '...' : summary;

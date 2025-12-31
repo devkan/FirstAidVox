@@ -68,7 +68,24 @@ export default {
         }
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: [
+          'Pretendard Variable',
+          'Pretendard',
+          'Inter',
+          'Noto Sans KR',
+          '-apple-system',
+          'BlinkMacSystemFont',
+          'system-ui',
+          'Segoe UI',
+          'Roboto',
+          'Helvetica Neue',
+          'Arial',
+          'sans-serif',
+        ],
+        // English-only font stack
+        en: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        // Korean-optimized font stack
+        ko: ['Pretendard Variable', 'Pretendard', 'Noto Sans KR', 'sans-serif'],
       },
       spacing: {
         '18': '4.5rem',

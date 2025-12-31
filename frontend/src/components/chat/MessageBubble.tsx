@@ -195,9 +195,20 @@ export const MessageBubble = React.memo(function MessageBubble({ message, classN
                             </div>
                             <div className="space-y-2">
                               {hospitals.slice(0, 2).map((hospital: any, index: number) => {
-                                const googleMapsUrl = hospital.latitude && hospital.longitude
-                                  ? `https://www.google.com/maps/search/?api=1&query=${hospital.latitude},${hospital.longitude}`
-                                  : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(hospital.name + ' ' + (hospital.address || ''))}`;
+                                // Use place_id if available for exact location, otherwise use name + coordinates
+                                let googleMapsUrl: string;
+                                if (hospital.place_id) {
+                                  // Best option: Use place_id for exact location
+                                  googleMapsUrl = `https://www.google.com/maps/place/?q=place_id:${hospital.place_id}`;
+                                } else if (hospital.latitude && hospital.longitude) {
+                                  // Fallback: Use name with coordinates to narrow down search
+                                  const searchQuery = encodeURIComponent(hospital.name);
+                                  googleMapsUrl = `https://www.google.com/maps/search/${searchQuery}/@${hospital.latitude},${hospital.longitude},17z`;
+                                } else {
+                                  // Last resort: Just search by name and address
+                                  const searchQuery = encodeURIComponent(hospital.name + ' ' + (hospital.address || ''));
+                                  googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${searchQuery}`;
+                                }
                                 
                                 return (
                                   <a 
@@ -239,9 +250,20 @@ export const MessageBubble = React.memo(function MessageBubble({ message, classN
                             </div>
                             <div className="space-y-2">
                               {pharmacies.slice(0, 2).map((pharmacy: any, index: number) => {
-                                const googleMapsUrl = pharmacy.latitude && pharmacy.longitude
-                                  ? `https://www.google.com/maps/search/?api=1&query=${pharmacy.latitude},${pharmacy.longitude}`
-                                  : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(pharmacy.name + ' ' + (pharmacy.address || ''))}`;
+                                // Use place_id if available for exact location, otherwise use name + coordinates
+                                let googleMapsUrl: string;
+                                if (pharmacy.place_id) {
+                                  // Best option: Use place_id for exact location
+                                  googleMapsUrl = `https://www.google.com/maps/place/?q=place_id:${pharmacy.place_id}`;
+                                } else if (pharmacy.latitude && pharmacy.longitude) {
+                                  // Fallback: Use name with coordinates to narrow down search
+                                  const searchQuery = encodeURIComponent(pharmacy.name);
+                                  googleMapsUrl = `https://www.google.com/maps/search/${searchQuery}/@${pharmacy.latitude},${pharmacy.longitude},17z`;
+                                } else {
+                                  // Last resort: Just search by name and address
+                                  const searchQuery = encodeURIComponent(pharmacy.name + ' ' + (pharmacy.address || ''));
+                                  googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${searchQuery}`;
+                                }
                                 
                                 return (
                                   <a 

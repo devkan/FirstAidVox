@@ -17,6 +17,11 @@ export interface MessageMetadata {
   attachments?: Attachment[];
   voiceData?: VoiceMetadata;
   medicalData?: MedicalAssessment;
+  // Additional metadata for conversational flow
+  isWelcome?: boolean;
+  assessment_stage?: 'initial' | 'clarification' | 'final' | 'completed';
+  conversation_stage?: 'initial' | 'clarification' | 'final';
+  hospitalData?: any[];
 }
 
 export interface Attachment {

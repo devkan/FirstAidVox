@@ -17,6 +17,7 @@ export interface VoiceAgentConfig {
   onDisconnect?: () => void;
   onError?: (error: Error) => void;
   onMessage?: (message: string) => void;
+  onUserMessage?: (message: string) => void;  // New: callback for user messages from ElevenLabs
   onStatusChange?: (status: 'connected' | 'connecting' | 'disconnected') => void;
   onModeChange?: (mode: 'listening' | 'speaking' | 'thinking') => void;
   onVolumeChange?: (volume: number) => void;
@@ -77,7 +78,12 @@ export class VoiceAgent {
   }
 
   /**
-   * Initialize connection (with ElevenLabs integration)
+   * Initialize connection (Web Speech API for STT - FREE, no ElevenLabs Conversational AI)
+   * 
+   * COST OPTIMIZATION: We use Web Speech API (free) for speech-to-text instead of 
+   * ElevenLabs Conversational AI which charges for STT + AI + TTS.
+   * Our backend handles AI responses, and we use ElevenLabs TTS API separately only for voice output.
+   * 
    * Validates: Requirements 6.1
    */
   async initializeConnection(): Promise<void> {
@@ -89,26 +95,13 @@ export class VoiceAgent {
     try {
       this.updateConnectionStatus('connecting');
       
-      // Check if ElevenLabs Agent ID is available
-      const agentId = this.config.agentId || import.meta.env.VITE_ELEVENLABS_AGENT_ID;
+      // 💰 COST OPTIMIZATION: Always use Web Speech API for STT (FREE)
+      // ElevenLabs Conversational AI charges for: STT + AI response + TTS
+      // We only need STT, so Web Speech API is the cost-effective choice
+      console.log('🎤 Initializing Web Speech API for STT (FREE - no ElevenLabs Conversational AI costs)');
+      console.log('💰 Cost optimization: Using free Web Speech API instead of paid ElevenLabs Conversational AI');
       
-      if (!agentId) {
-        console.warn('ElevenLabs Agent ID not found. Using Web Speech API as fallback.');
-        return this.initializeWebSpeechFallback();
-      }
-      
-      console.log('🎤 Initializing ElevenLabs Conversational AI...');
-      console.log('📋 Agent ID:', agentId);
-      
-      try {
-        // Try to initialize ElevenLabs Conversational AI
-        await this.initializeElevenLabsConversation(agentId);
-        this.isUsingElevenLabs = true;
-        console.log('✅ ElevenLabs Conversational AI initialized successfully');
-      } catch (elevenLabsError) {
-        console.warn('❌ ElevenLabs initialization failed, falling back to Web Speech API:', elevenLabsError);
-        return this.initializeWebSpeechFallback();
-      }
+      return this.initializeWebSpeechFallback();
       
     } catch (error) {
       this.updateConnectionStatus('disconnected');
@@ -170,10 +163,21 @@ export class VoiceAgent {
       console.log('🎤 Starting ElevenLabs conversation session...');
       
       // Create conversation session using the new API with enhanced settings
+      // NOTE: We disable ElevenLabs' built-in AI audio output because we use our own backend
+      // ElevenLabs is used ONLY for speech-to-text (STT), not for AI responses
       const conversation = await Conversation.startSession({
         agentId: agentId,
         connectionType: 'webrtc', // WebRTC for better audio quality
-        // Enhanced audio settings for better recognition
+        // 🔇 CRITICAL: Disable ElevenLabs AI audio output - we use our own backend TTS
+        // Set volume to 0 to mute ElevenLabs' built-in AI responses
+        overrides: {
+          agent: {
+            tts: {
+              voiceId: '21m00Tcm4TlvDq8ikWAM' // Keep voice ID but we'll mute it
+            }
+          }
+        },
+        // Enhanced audio settings for better recognition (input only)
         audioSettings: {
           echoCancellation: true,
           noiseSuppression: true,
@@ -182,8 +186,15 @@ export class VoiceAgent {
           channelCount: 1
         },
         onConnect: () => {
-          console.log('🎤 ElevenLabs conversation connected');
+          console.log('🎤 ElevenLabs conversation connected (STT only mode)');
           this.config.onConnect?.();
+          
+          // 🔇 Mute ElevenLabs audio output after connection
+          // We only use ElevenLabs for speech-to-text, our backend handles AI responses
+          if (conversation && typeof conversation.setVolume === 'function') {
+            conversation.setVolume({ volume: 0 });
+            console.log('🔇 ElevenLabs AI audio muted - using our backend for responses');
+          }
         },
         onDisconnect: () => {
           console.log('🎤 ElevenLabs conversation disconnected');
@@ -206,7 +217,22 @@ export class VoiceAgent {
           
           // 메시지 내용 추출
           const messageContent = message.message || message.text || message.content || message;
-          this.config.onMessage?.(messageContent);
+          
+          // 사용자 메시지와 AI 메시지 구분
+          if (message.source === 'user' || message.role === 'user') {
+            // 사용자 음성 메시지 - onUserMessage 콜백 호출
+            // This triggers our backend processing
+            console.log('🎤 User voice message (sending to our backend):', messageContent);
+            this.config.onUserMessage?.(messageContent);
+          } else if (message.source === 'ai' || message.role === 'agent' || message.role === 'assistant') {
+            // 🔇 ElevenLabs AI 응답 - 무시 (우리 백엔드 사용)
+            // We ignore ElevenLabs' built-in AI responses since we use our own backend
+            console.log('🔇 ElevenLabs AI response (ignored - audio muted, using our backend):', messageContent.substring(0, 50) + '...');
+            // Don't call onMessage - our backend response will be used instead
+          } else {
+            // 기타 메시지 - 로그만 출력
+            console.log('🔇 Other ElevenLabs message (ignored):', messageContent);
+          }
         },
         onModeChange: (mode: any) => {
           console.log('🎤 ElevenLabs mode change:', mode);
@@ -214,8 +240,8 @@ export class VoiceAgent {
           this.config.onModeChange?.(mappedMode);
         },
         onVolumeChange: (volume: any) => {
-          console.log('🎤 ElevenLabs volume change:', volume);
-          this.config.onVolumeChange?.(volume);
+          // We control volume ourselves, ignore ElevenLabs volume changes
+          console.log('🎤 ElevenLabs volume change (ignored):', volume);
         }
       });
       

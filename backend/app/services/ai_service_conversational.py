@@ -432,20 +432,39 @@ CRITICAL: Check conversation history. If a previous response included "Consultat
             else:
                 assessment_stage = "initial"
             
-            # ONLY override to final if:
-            # 1. Already in clarification stage (message_count >= 2) AND
-            # 2. Response contains EXPLICIT final diagnosis markers
+            # Check for final diagnosis markers in response
             lower_response = response_text.lower()
+            
+            # Explicit completion markers (strongest signal)
             explicit_final_markers = [
                 'consultation completed', '상담이 완료', '상담 완료',
                 'assessment complete', 'final diagnosis', '최종 진단',
                 '相談が完了', 'consulta completada'
             ]
             
-            # Only upgrade to final if we have enough conversation AND explicit markers
-            if assessment_stage == "clarification" and any(marker in lower_response for marker in explicit_final_markers):
+            # Diagnosis content markers (indicates a diagnosis was given)
+            diagnosis_markers = [
+                '**diagnosis**:', 'diagnosis:', '**진단**:', '진단:',
+                '**immediate care**:', 'immediate care:', '즉시 관리:',
+                '**hospital**:', 'hospital:', '**병원**:', '병원:',
+                '**pharmacy**:', 'pharmacy:', '**약국**:', '약국:',
+                '**emergency**:', 'emergency:', '**응급**:', '응급상황:',
+                'upper respiratory', 'common cold', 'flu', 'infection',
+                '감기', '상기도 감염', '독감', '바이러스'
+            ]
+            
+            # Upgrade to final if:
+            # 1. Explicit completion markers found (any stage)
+            # 2. Diagnosis content markers found AND at least 2 messages in history
+            has_explicit_markers = any(marker in lower_response for marker in explicit_final_markers)
+            has_diagnosis_content = any(marker in lower_response for marker in diagnosis_markers)
+            
+            if has_explicit_markers:
                 assessment_stage = "final"
                 logger.info("Upgraded to final stage due to explicit completion markers")
+            elif has_diagnosis_content and conversation_history and len(conversation_history) >= 2:
+                assessment_stage = "final"
+                logger.info("Upgraded to final stage due to diagnosis content markers")
             
             # Log the stage determination
             logger.info(f"Assessment stage determined: {assessment_stage} (message_count: {len(conversation_history) if conversation_history else 0})")

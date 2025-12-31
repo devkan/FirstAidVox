@@ -183,6 +183,11 @@ class ConversationalMedicalService {
       const result: ConversationalResponse = await response.json();
 
       // Add AI response to history with hospital data in metadata
+      console.log('📦 Adding AI message with hospital data:', {
+        hasHospitalData: !!result.hospital_data,
+        hospitalCount: result.hospital_data?.length || 0
+      });
+      
       this.addMessage('assistant', result.response, {
         confidence: result.confidence,
         urgency_level: result.urgency_level,

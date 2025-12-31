@@ -2,6 +2,8 @@ import { useEffect, useRef, useCallback } from 'react';
 import { VoiceAgent, createVoiceAgent, defaultVoiceConfig } from '../services/voiceAgent';
 import { useVoiceState, useMedicalState, useUIState } from './useAppState';
 import { backendService } from '../services/backendService';
+import { conversationalService } from '../services/conversationalService';
+import type { ConversationMessage } from '../services/backendService';
 
 export interface UseVoiceAgentOptions {
   agentId?: string;
@@ -16,8 +18,14 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
   const medicalState = useMedicalState();
   const uiState = useUIState();
   const voiceAgentRef = useRef<VoiceAgent | null>(null);
-  const queueUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const queueUpdateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastNotificationTimeRef = useRef<number>(0);
+  
+  // Conversation history for multi-turn diagnosis
+  const conversationHistoryRef = useRef<ConversationMessage[]>([]);
+  
+  // Ref for playTTSResponse function to use in callbacks
+  const playTTSResponseRef = useRef<((text: string) => Promise<void>) | null>(null);
 
   // Create stable references for options to prevent infinite re-renders
   const stableOptionsRef = useRef(options);
@@ -46,7 +54,8 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
   }, [uiState]);
 
   // Update queue status periodically
-  const updateQueueStatus = useCallback(() => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _updateQueueStatus = useCallback(() => {
     if (voiceAgentRef.current) {
       const queueStatus = voiceAgentRef.current.getQueueStatus();
       stableVoiceState.current.updateQueueSize(queueStatus.size);
@@ -124,24 +133,139 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
             });
           }
         },
-        onMessage: async (message: string) => {
-          try {
-            // Add system response to conversation history
-            stableMedicalState.current.addConversationEntry({
-              id: `response-${Date.now()}`,
-              timestamp: new Date(),
-              type: 'system_response',
-              content: message,
-              metadata: {
-                confidence: 0.9 // Default confidence for voice responses
-              }
-            });
-
-            stableVoiceState.current.stopProcessing();
-          } catch (error) {
-            console.error('Error processing voice response:', error);
-            stableVoiceState.current.stopProcessing();
+        // 🎤 Handle user voice messages from ElevenLabs - send to OUR backend for proper language support
+        onUserMessage: async (message: string) => {
+          console.log('🎤 ElevenLabs user message received:', message);
+          
+          // Skip empty or placeholder messages
+          if (!message || message.trim() === '' || message === '...') {
+            console.log('⚠️ Skipping empty user message');
+            return;
           }
+          
+          try {
+            stableVoiceState.current.startProcessing();
+            stableMedicalState.current.startProcessing();
+            
+            // 🔄 SYNC: Add user voice message to conversationalService for chat display
+            console.log('💬 Adding user voice message to chat...');
+            conversationalService.addMessage('user', message);
+            
+            // Add to medical state conversation history
+            stableMedicalState.current.addConversationEntry({
+              id: `voice-user-${Date.now()}`,
+              timestamp: new Date(),
+              type: 'user_voice',
+              content: message
+            });
+            
+            // Get user location if available
+            let userLocation;
+            try {
+              const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                  timeout: 5000,
+                  enableHighAccuracy: false
+                });
+              });
+              userLocation = {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude
+              };
+            } catch (error) {
+              console.log('Location not available:', error);
+            }
+            
+            // 📤 Send to OUR backend for proper language detection and response
+            console.log('📤 Sending voice message to our backend...');
+            const agentResponse = await backendService.sendConversationalMessage(
+              message,
+              conversationHistoryRef.current,
+              userLocation,
+              stableOptionsRef.current.pendingImage || undefined
+            );
+            
+            console.log('✅ Backend response received:', agentResponse);
+            
+            // Update conversation history
+            conversationHistoryRef.current.push({
+              role: 'user',
+              content: message
+            });
+            
+            const aiResponseText = agentResponse.brief_text || agentResponse.response || agentResponse.advice || '';
+            conversationHistoryRef.current.push({
+              role: 'assistant',
+              content: aiResponseText
+            });
+            
+            // Clear the pending image after sending
+            if (stableOptionsRef.current.pendingImage && stableOptionsRef.current.onImageSent) {
+              stableOptionsRef.current.onImageSent();
+            }
+            
+            // Update medical state with response
+            const fullResponse = agentResponse.response || agentResponse.advice || '';
+            let briefSummary = fullResponse;
+            let detailedAdvice = fullResponse;
+            
+            if (agentResponse.brief_text && agentResponse.detailed_text) {
+              briefSummary = agentResponse.brief_text;
+              detailedAdvice = agentResponse.detailed_text;
+            }
+            
+            if (agentResponse.condition || agentResponse.urgencyLevel) {
+              stableMedicalState.current.setAssessment({
+                condition: agentResponse.condition || 'Assessment in progress',
+                urgencyLevel: agentResponse.urgencyLevel || 'low',
+                advice: detailedAdvice,
+                confidence: agentResponse.confidence || 0.8,
+                hospitalData: agentResponse.hospital_data,
+                requiresEmergencyServices: agentResponse.urgencyLevel === 'high'
+              });
+            }
+            
+            // 🔄 SYNC: Add AI response to conversationalService for chat display
+            console.log('💬 Adding AI response to chat...');
+            conversationalService.addMessage('assistant', fullResponse, {
+              confidence: agentResponse.confidence || 0.8,
+              urgency_level: agentResponse.urgencyLevel,
+              assessment_stage: agentResponse.assessment_stage,
+              hospitalData: agentResponse.hospital_data
+            });
+            
+            // 🔊 Play TTS response with proper language
+            console.log('🔊 Playing TTS for backend response...');
+            if (playTTSResponseRef.current) {
+              await playTTSResponseRef.current(briefSummary);
+            }
+            
+            stableVoiceState.current.stopProcessing();
+            stableMedicalState.current.stopProcessing();
+            
+          } catch (error) {
+            console.error('Error processing user voice message:', error);
+            stableVoiceState.current.stopProcessing();
+            stableMedicalState.current.stopProcessing();
+            
+            stableUIState.current.addNotification({
+              id: `voice-user-error-${Date.now()}`,
+              type: 'error',
+              title: 'Processing Error',
+              message: 'Failed to process your voice message. Please try again.',
+              timestamp: new Date(),
+              autoClose: true
+            });
+          }
+        },
+        // 🤖 Handle AI responses from ElevenLabs (we'll ignore these since we use our backend)
+        onMessage: async (message: string) => {
+          // NOTE: We're now using our own backend for AI responses via onUserMessage
+          // This callback receives ElevenLabs' built-in AI responses which we'll log but not use
+          console.log('🤖 ElevenLabs AI response (ignored - using our backend):', message.substring(0, 100) + '...');
+          
+          // Don't add to conversation or play TTS - our backend response handles this
+          stableVoiceState.current.stopProcessing();
         },
         onStatusChange: (status) => {
           stableVoiceState.current.updateConnectionStatus(status);
@@ -169,7 +293,12 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
         onTranscription: async (text: string) => {
           stableVoiceState.current.updateTranscription(text);
           
-          // Add user voice input to conversation history
+          console.log('🎤 Voice transcription received:', text);
+          
+          // 🔄 SYNC: Add user voice message to conversationalService for chat display
+          conversationalService.addMessage('user', text);
+          
+          // Add user voice input to medical state conversation history
           stableMedicalState.current.addConversationEntry({
             id: `voice-${Date.now()}`,
             timestamp: new Date(),
@@ -199,12 +328,28 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
               console.log('Location not available:', error);
             }
 
-            // Send message to backend agent
-            const agentResponse = await backendService.sendMessageToAgent(
-              text, 
+            // Send message using conversational endpoint with history for proper language detection
+            console.log('📤 Sending voice message via conversational endpoint...');
+            const agentResponse = await backendService.sendConversationalMessage(
+              text,
+              conversationHistoryRef.current,
               userLocation, 
               stableOptionsRef.current.pendingImage || undefined
             );
+            
+            console.log('✅ Voice response received:', agentResponse);
+            
+            // Update conversation history
+            conversationHistoryRef.current.push({
+              role: 'user',
+              content: text
+            });
+            
+            const aiResponseText = agentResponse.brief_text || agentResponse.response || agentResponse.advice || '';
+            conversationHistoryRef.current.push({
+              role: 'assistant',
+              content: aiResponseText
+            });
             
             // Clear the pending image after sending
             if (stableOptionsRef.current.pendingImage && stableOptionsRef.current.onImageSent) {
@@ -212,26 +357,45 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
             }
             
             // Update medical state with response
+            const fullResponse = agentResponse.response || agentResponse.advice || '';
+            let briefSummary = fullResponse;
+            let detailedAdvice = fullResponse;
+            
+            if (agentResponse.brief_text && agentResponse.detailed_text) {
+              briefSummary = agentResponse.brief_text;
+              detailedAdvice = agentResponse.detailed_text;
+            }
+            
             if (agentResponse.condition || agentResponse.urgencyLevel) {
               stableMedicalState.current.setAssessment({
                 condition: agentResponse.condition || 'Assessment in progress',
                 urgencyLevel: agentResponse.urgencyLevel || 'low',
-                advice: agentResponse.response,
+                advice: detailedAdvice,
                 confidence: agentResponse.confidence || 0.8,
                 hospitalData: agentResponse.hospital_data,
                 requiresEmergencyServices: agentResponse.urgencyLevel === 'high'
               });
             }
 
+            // 🔄 SYNC: Add AI response to conversationalService for chat display
+            console.log('💬 Adding AI response to conversationalService...');
+            conversationalService.addMessage('assistant', fullResponse, {
+              confidence: agentResponse.confidence || 0.8,
+              urgency_level: agentResponse.urgencyLevel,
+              assessment_stage: agentResponse.assessment_stage,
+              hospitalData: agentResponse.hospital_data
+            });
+
             // Show hospitals on map if provided
             if (agentResponse.hospital_data && agentResponse.hospital_data.length > 0) {
-              // We need to access mapState from the hook context
-              // This will be handled by the parent component through the response
-              console.log('Hospital data received:', agentResponse.hospital_data);
+              console.log('🏥 Hospital data received:', agentResponse.hospital_data);
             }
 
-            // Convert response to speech (this would be handled by ElevenLabs)
-            // The agent should handle TTS automatically based on the response
+            // 🔊 Play TTS response
+            console.log('🔊 Playing TTS for voice response...');
+            if (playTTSResponseRef.current) {
+              await playTTSResponseRef.current(briefSummary);
+            }
 
             stableVoiceState.current.stopProcessing();
             stableMedicalState.current.stopProcessing();
@@ -250,7 +414,7 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
             });
           }
         },
-        onResponse: (audioUrl: string, text: string) => {
+        onResponse: (_audioUrl: string, text: string) => {
           // Response is already handled in onMessage callback above
           console.log('Voice response received:', text);
         },
@@ -335,12 +499,18 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
   }, [stopQueueMonitoring]);
 
   // Send text message through voice agent with priority support
+  // This also syncs with conversationalService so voice messages appear in chat
   const sendMessage = useCallback(async (text: string, priority: 'low' | 'normal' | 'high' = 'normal', imageFile?: File | null) => {
     console.log('🎤 useVoiceAgent.sendMessage called with:', { text, priority, hasImage: !!imageFile });
     
     try {
       stableVoiceState.current.startProcessing();
       stableMedicalState.current.startProcessing();
+      
+      // 🔄 SYNC: Add user message to conversationalService for chat display
+      // This ensures voice messages appear in the chat UI
+      console.log('💬 Adding voice message to conversationalService for chat display...');
+      conversationalService.addMessage('user', text);
       
       console.log('📍 Getting user location...');
       // Get user location if available
@@ -361,19 +531,41 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
       }
 
       console.log('🌍 User location:', userLocation);
+      console.log('📜 Conversation history length:', conversationHistoryRef.current.length);
 
       // Use the provided imageFile or fallback to pendingImage
       const imageToSend = imageFile || stableOptionsRef.current.pendingImage || undefined;
       
-      // Send message directly to backend with image if available
-      console.log('📤 Calling backendService.sendMessageToAgent...');
-      const agentResponse = await backendService.sendMessageToAgent(
-        text, 
+      // Send message using conversational endpoint with history
+      console.log('📤 Calling backendService.sendConversationalMessage...');
+      const agentResponse = await backendService.sendConversationalMessage(
+        text,
+        conversationHistoryRef.current,
         userLocation, 
         imageToSend
       );
       
       console.log('✅ Backend response received:', agentResponse);
+      console.log('📊 Assessment stage:', agentResponse.assessment_stage);
+      
+      // Update conversation history with user message and AI response
+      conversationHistoryRef.current.push({
+        role: 'user',
+        content: text
+      });
+      
+      const aiResponseText = agentResponse.brief_text || agentResponse.response || agentResponse.advice || '';
+      conversationHistoryRef.current.push({
+        role: 'assistant',
+        content: aiResponseText
+      });
+      
+      console.log('📜 Updated conversation history length:', conversationHistoryRef.current.length);
+      
+      // Clear conversation history if consultation is completed
+      if (agentResponse.assessment_stage === 'completed' || agentResponse.assessment_stage === 'final') {
+        console.log('🔄 Consultation completed, will reset history on next new conversation');
+      }
       
       // Clear the pending image after sending
       if ((imageFile || stableOptionsRef.current.pendingImage) && stableOptionsRef.current.onImageSent) {
@@ -411,7 +603,17 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
       
       console.log('✅ Medical assessment set successfully');
 
-      // Add conversation entries
+      // 🔄 SYNC: Add AI response to conversationalService for chat display
+      // Include hospital data in metadata so it appears in chat
+      console.log('💬 Adding AI response to conversationalService for chat display...');
+      conversationalService.addMessage('assistant', fullResponse, {
+        confidence: agentResponse.confidence || 0.8,
+        urgency_level: agentResponse.urgencyLevel || agentResponse.confidence_level,
+        assessment_stage: agentResponse.assessment_stage,
+        hospitalData: agentResponse.hospital_data || agentResponse.hospitals
+      });
+
+      // Add conversation entries to medical state (for other UI components)
       stableMedicalState.current.addConversationEntry({
         id: `text-${Date.now()}`,
         timestamp: new Date(),
@@ -737,6 +939,11 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
     });
   }, [detectLanguage]); // Remove options.apiKey since we use stableOptionsRef
 
+  // Update playTTSResponseRef when playTTSResponse changes
+  useEffect(() => {
+    playTTSResponseRef.current = playTTSResponse;
+  }, [playTTSResponse]);
+
   // Clear voice request queue
   const clearQueue = useCallback(() => {
     if (voiceAgentRef.current) {
@@ -772,6 +979,17 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
 
   const getLanguagePreference = useCallback(() => {
     return voiceAgentRef.current?.getLanguagePreference() || 'auto';
+  }, []);
+
+  // Clear conversation history for new consultation
+  const clearConversationHistory = useCallback(() => {
+    conversationHistoryRef.current = [];
+    console.log('🔄 Conversation history cleared');
+  }, []);
+
+  // Get current conversation history length
+  const getConversationHistoryLength = useCallback(() => {
+    return conversationHistoryRef.current.length;
   }, []);
 
   // Auto-connect on mount if enabled
@@ -811,6 +1029,10 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
     // Language preferences
     setLanguagePreference,
     getLanguagePreference,
+    
+    // Conversation history management
+    clearConversationHistory,
+    getConversationHistoryLength,
     
     // Agent instance (for advanced usage)
     agent: voiceAgentRef.current,

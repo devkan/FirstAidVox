@@ -10,7 +10,10 @@ html, body {
   margin: 0;
   padding: 0;
   height: 100%;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  /* Pretendard for Korean, Inter for English, with system fallbacks */
+  font-family: 'Pretendard Variable', 'Pretendard', 'Inter', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-feature-settings: 'liga' 1, 'calt' 1; /* Enable ligatures */
+  letter-spacing: -0.01em; /* Slightly tighter for better Korean readability */
 }
 
 #root {
@@ -22,6 +25,13 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  font-optical-sizing: auto;
+}
+
+/* Korean text specific styling */
+:lang(ko) {
+  word-break: keep-all; /* Prevent breaking Korean words */
+  overflow-wrap: break-word;
 }
 
 /* Custom utility classes */
@@ -37,5 +47,16 @@ body {
   
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+  
+  /* Font weight utilities for better readability */
+  .font-readable {
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+  
+  .font-readable-medium {
+    font-weight: 500;
+    letter-spacing: -0.01em;
   }
 }
