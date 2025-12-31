@@ -49,24 +49,32 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
   // Convert conversation history to chat messages
   // NOTE: This effect handles syncing conversationalService messages to chat UI
   // It triggers on medical assessment changes AND periodically to catch voice messages
+  // 🔧 OPTIMIZED: Reduced sync frequency and added change detection to prevent flickering
+  const lastSyncedCountRef = useRef(0);
+  
   useEffect(() => {
     const syncMessages = () => {
       const conversation = conversationalService.getCurrentConversation();
       if (!conversation) return;
+
+      // Check if conversation has new messages we haven't synced yet
+      const conversationMsgCount = conversation.messages.length;
+      
+      // 🔧 OPTIMIZATION: Skip if no new messages since last sync
+      if (conversationMsgCount === lastSyncedCountRef.current) {
+        return; // No changes, skip sync to prevent flickering
+      }
 
       // Skip if we already have messages with hospital data (they're managed by handleSendMessage)
       // Only run on initial load (messages.length === 0 or just welcome message)
       const hasOnlyWelcome = messages.length === 1 && messages[0]?.id === 'welcome-msg';
       const hasHospitalData = messages.some(msg => (msg.metadata?.hospitalData?.length ?? 0) > 0);
       
-      // Check if conversation has new messages we haven't displayed yet
-      const conversationMsgCount = conversation.messages.length;
       const displayedMsgCount = messages.filter(m => m.id !== 'welcome-msg' && m.type !== 'medical').length;
       const hasNewMessages = conversationMsgCount > displayedMsgCount;
       
       // Don't overwrite messages that have hospital data unless there are new messages
       if (hasHospitalData && !hasNewMessages) {
-        console.log('📋 Skipping message sync - hospital data exists and no new messages');
         return;
       }
       
@@ -82,6 +90,9 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
         hasNewMessages,
         hasHospitalData
       });
+
+      // Update last synced count
+      lastSyncedCountRef.current = conversationMsgCount;
 
       const chatMessages: ChatMessage[] = conversation.messages.map((msg) => ({
         id: msg.id,
@@ -142,8 +153,8 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
     // Initial sync
     syncMessages();
 
-    // Set up interval to check for new voice messages
-    const syncInterval = setInterval(syncMessages, 500); // Check every 500ms
+    // Set up interval to check for new voice messages (increased to 1 second to reduce flickering)
+    const syncInterval = setInterval(syncMessages, 1000);
 
     return () => clearInterval(syncInterval);
   }, [medicalState.currentAssessment]); // Trigger on medical assessment changes

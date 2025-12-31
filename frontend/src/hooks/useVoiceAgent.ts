@@ -101,13 +101,15 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
     try {
       stableVoiceState.current.updateConnectionStatus('connecting');
 
+      // 🎤 Using ElevenLabs Conversational AI for better multilingual STT
+      // AI audio is muted, we use our own backend for responses
       const agent = createVoiceAgent({
         agentId: stableOptionsRef.current.agentId || defaultVoiceConfig.agentId || 'default-agent-id',
         apiKey: stableOptionsRef.current.apiKey || defaultVoiceConfig.apiKey,
         onConnect: () => {
           stableVoiceState.current.updateConnectionStatus('connected');
           startQueueMonitoring();
-          console.log('Voice agent connected successfully');
+          console.log('🎤 Voice agent connected (ElevenLabs STT, AI audio muted)');
         },
         onDisconnect: () => {
           stableVoiceState.current.updateConnectionStatus('disconnected');
@@ -121,7 +123,7 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
           
           // Throttle error notifications to prevent spam
           const now = Date.now();
-          if (now - lastNotificationTimeRef.current > 5000) { // Only show error notification every 5 seconds
+          if (now - lastNotificationTimeRef.current > 5000) {
             lastNotificationTimeRef.current = now;
             stableUIState.current.addNotification({
               id: `voice-error-${now}`,
@@ -133,9 +135,9 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
             });
           }
         },
-        // 🎤 Handle user voice messages from ElevenLabs - send to OUR backend for proper language support
+        // 🎤 Handle user voice messages from ElevenLabs STT - send to OUR backend
         onUserMessage: async (message: string) => {
-          console.log('🎤 ElevenLabs user message received:', message);
+          console.log('🎤 ElevenLabs STT received:', message);
           
           // Skip empty or placeholder messages
           if (!message || message.trim() === '' || message === '...') {
@@ -234,7 +236,7 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
               hospitalData: agentResponse.hospital_data
             });
             
-            // 🔊 Play TTS response with proper language
+            // 🔊 Play TTS response with proper language (ElevenLabs TTS API)
             console.log('🔊 Playing TTS for backend response...');
             if (playTTSResponseRef.current) {
               await playTTSResponseRef.current(briefSummary);
@@ -258,14 +260,10 @@ export function useVoiceAgent(options: UseVoiceAgentOptions = {}) {
             });
           }
         },
-        // 🤖 Handle AI responses from ElevenLabs (we'll ignore these since we use our backend)
-        onMessage: async (message: string) => {
-          // NOTE: We're now using our own backend for AI responses via onUserMessage
-          // This callback receives ElevenLabs' built-in AI responses which we'll log but not use
-          console.log('🤖 ElevenLabs AI response (ignored - using our backend):', message.substring(0, 100) + '...');
-          
-          // Don't add to conversation or play TTS - our backend response handles this
-          stableVoiceState.current.stopProcessing();
+        // 🔇 ElevenLabs AI responses are muted - we use our own backend
+        onMessage: async (_message: string) => {
+          // AI audio is muted via setVolume(0), this callback is just for logging
+          console.log('🔇 ElevenLabs AI response (audio muted, using our backend instead)');
         },
         onStatusChange: (status) => {
           stableVoiceState.current.updateConnectionStatus(status);
