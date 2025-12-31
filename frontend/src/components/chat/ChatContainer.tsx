@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { MessageBubble } from './MessageBubble';
-import { MedicalCard } from './MedicalCard';
 import { ChatInput } from './ChatInput';
 import { TypingIndicator } from './TypingIndicator';
 import { EmergencyButton } from './EmergencyButton';
@@ -123,28 +122,6 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
           }
         };
         chatMessages.unshift(welcomeMessage);
-      }
-
-      // Add medical assessment as special message if available and conversation is in final stage
-      if (medicalState.currentAssessment && conversation.currentStage === 'final') {
-        // Check if medical assessment message already exists
-        const hasMedicalMessage = chatMessages.some(msg => msg.type === 'medical');
-        if (!hasMedicalMessage) {
-          const medicalMessage: ChatMessage = {
-            id: `medical-assessment-${Date.now()}`,
-            content: medicalState.currentAssessment.advice,
-            type: 'medical',
-            timestamp: new Date(),
-            isUser: false,
-            metadata: {
-              medicalData: medicalState.currentAssessment,
-              urgency: medicalState.currentAssessment.urgencyLevel,
-              confidence: medicalState.currentAssessment.confidence,
-              assessment_stage: 'final'
-            }
-          };
-          chatMessages.push(medicalMessage);
-        }
       }
 
       setMessages(chatMessages);
@@ -708,15 +685,7 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
               // Messages list
               messages.map((message) => (
                 <div key={message.id} className="message-enter">
-                  {message.type === 'medical' && message.metadata?.medicalData ? (
-                    <MedicalCard
-                      assessment={message.metadata.medicalData}
-                      timestamp={message.timestamp}
-                      className="mb-3 sm:mb-4"
-                    />
-                  ) : (
-                    <MessageBubble message={message} />
-                  )}
+                  <MessageBubble message={message} />
                 </div>
               ))
             )}
