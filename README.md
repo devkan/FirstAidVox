@@ -2,6 +2,12 @@
 
 FirstAidVox is an AI-powered medical triage system that provides real-time symptom assessment through voice and text conversations, image analysis, and location-based hospital recommendations.
 
+## 🎬 Demo Video
+
+[![FirstAidVox Demo](https://img.youtube.com/vi/GKcp-0gxWvE/0.jpg)](https://youtu.be/GKcp-0gxWvE)
+
+▶️ [Watch Demo on YouTube](https://youtu.be/GKcp-0gxWvE)
+
 ## 🌟 Key Features
 
 ### Conversational Medical Triage
@@ -10,11 +16,33 @@ FirstAidVox is an AI-powered medical triage system that provides real-time sympt
 - **Voice Interaction**: Real-time voice input using ElevenLabs Conversational AI
 - **Text-to-Speech**: Natural voice responses with language-appropriate TTS
 
+![Chat Interface](screenshot/001.png)
+*Conversational symptom assessment with multilingual support*
+
 ### AI-Powered Diagnosis
-- **Symptom Analysis**: Intelligent symptom assessment using Google Gemini AI
+- **Symptom Analysis**: Intelligent symptom assessment using Google Gemini 2.0 Flash
 - **Image Analysis**: Injury/symptom photo analysis with Gemini Vision
-- **Medical Fact-Checking**: Verification against medical manuals via Vertex AI Search
+- **Medical Fact-Checking**: Verification against medical manuals via Vertex AI Search (RAG)
 - **Confidence Scoring**: Assessment confidence levels for transparency
+
+![Diagnosis & Hospital Recommendations](screenshot/002.png)
+*Final diagnosis with hospital and pharmacy recommendations*
+
+### Backend API & Monitoring
+- **FastAPI Backend**: High-performance Python API server
+- **Real-time Monitoring**: Traffic and error tracking via Vertex AI
+
+![Backend API](screenshot/003.png)
+*FastAPI backend with comprehensive API endpoints*
+
+![Vertex AI Monitoring](screenshot/004.png)
+*Monitoring of Vertex AI Search App (Traffic & Errors)*
+
+### Voice Synthesis
+- **ElevenLabs Integration**: High-quality voice synthesis for natural conversations
+
+![ElevenLabs Usage](screenshot/005.png)
+*ElevenLabs Voice Synthesis Usage Dashboard*
 
 ### Location Services
 - **Hospital Search**: Nearby hospital and pharmacy recommendations
