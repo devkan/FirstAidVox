@@ -291,6 +291,9 @@ export const ChatContainer = React.memo(function ChatContainer({ className = '' 
             .replace(/BRIEF:|DETAILED:/g, '')
             .replace(/\n+/g, ' ')
             .replace(/\s+/g, ' ')
+            // Remove function call patterns like search_hospitals("내과", "이비인후과")
+            .replace(/search_hospitals\s*\([^)]*\)/gi, '')
+            .replace(/\w+_\w+\s*\([^)]*\)/g, '') // Remove any function_name() patterns
             .trim();
           
           // For final diagnosis, read the full detailed_text (no sentence limit)
